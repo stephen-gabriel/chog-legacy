@@ -4,6 +4,9 @@ import {
   INITIAL_STATS,
   RULESET_VERSION,
   applyDelta,
+  consequenceForChoice,
+  courierChoices,
+  courierSituation,
   dailyTemplateIds,
   deriveTitle,
   findChoice,
@@ -11,7 +14,7 @@ import {
   nextUtcMidnight,
   utcDateOf,
 } from '../../src/shared/rules';
-import type { Stats, Title } from '../../src/shared/rules';
+import type { ChoiceDef, ConsequenceState, Stats, StoryFlags, StorySituation, Title } from '../../src/shared/rules';
 import { AppError } from '../../src/server/errors';
 import { canonicalIdentity, hashRequest } from '../../src/server/service';
 
@@ -72,6 +75,21 @@ export interface PgCommitReceipt {
   nextResetUtc: string;
   version: number;
   duplicate?: boolean;
+  consequence?: ConsequenceState | null;
+  obligationClosed?: ConsequenceState | null;
+}
+
+export interface ConsequenceRow {
+  id: string;
+  character_id: string;
+  kind: ConsequenceState['kind'];
+  status: ConsequenceState['status'];
+  opened_sequence: number;
+  origin_template_id: number | null;
+  origin_choice_id: string | null;
+  closed_event_id: string | null;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface SyncResult {
@@ -213,6 +231,61 @@ export async function applyOwnershipSync(
   return { changed: true, epochId: epoch.id, controller: epoch.controller_wallet };
 }
 
+async function loadConsequences(
+  client: PoolClient | Pool,
+  characterId: string,
+): Promise<ConsequenceState[]> {
+  const { rows } = await client.query<ConsequenceRow>(
+    `SELECT id, character_id, kind, status, opened_sequence, origin_template_id, origin_choice_id, closed_event_id, created_at, updated_at
+     FROM story_consequences WHERE character_id = $1 ORDER BY opened_sequence ASC, created_at ASC`,
+    [characterId],
+  );
+  return rows.map(toConsequence);
+}
+
+function toConsequence(r: {
+  kind: ConsequenceState['kind'];
+  status: ConsequenceState['status'];
+  opened_sequence: number;
+  origin_template_id: number | null;
+  origin_choice_id: string | null;
+}): ConsequenceState {
+  return {
+    kind: r.kind,
+    status: r.status,
+    openedSequence: r.opened_sequence,
+    originTemplateId: r.origin_template_id,
+    originChoiceId: r.origin_choice_id,
+  };
+}
+
+async function storyFlags(
+  events: Array<{ sequence: number; created_at: string | Date }>,
+  open: ConsequenceState[],
+): Promise<StoryFlags> {
+  const openConsequences = open.map(c => ({ ...c }));
+  const openCourier = openConsequences
+    .filter(c => (c.kind === 'courier_trust' || c.kind === 'tax_grudge') && c.status === 'open')
+    .sort((a, b) => a.openedSequence - b.openedSequence)[0];
+  let latestCourierOpenedAtDay: string | null = null;
+  if (openCourier) {
+    const ev = events.find(e => e.sequence === openCourier.openedSequence);
+    if (ev) latestCourierOpenedAtDay = utcDateOf(new Date(ev.created_at));
+  }
+  return { openConsequences, latestCourierOpenedAtDay };
+}
+
+function nextPlayable(
+  situation: StorySituation,
+  instances: Array<{ id: string; template_id: number; resolved_event_id: string | null }>,
+): { id: string; template_id: number } | null {
+  const open = instances.filter(i => !i.resolved_event_id);
+  if (open.length === 0) return null;
+  if (situation === 'base') return open[0];
+  const courier = open.find(i => i.template_id === 0);
+  return courier ?? open[0];
+}
+
 async function ensureDay(
   client: PoolClient,
   character: CharacterRow,
@@ -233,10 +306,19 @@ async function ensureDay(
     [character.id, date],
   );
   if (instances.length === 0) {
-    const ids = dailyTemplateIds(
-      canonicalId({ namespace: character.namespace, chainId: character.chain_id === null ? null : Number(character.chain_id), contract: character.contract, tokenId: character.token_id }),
-      date,
+    const open = await loadConsequences(client, character.id);
+    const events = await client.query<{ sequence: number; created_at: Date }>(
+      'SELECT sequence, created_at FROM game_events WHERE character_id = $1 ORDER BY sequence ASC',
+      [character.id],
     );
+    const flags = await storyFlags(events.rows, open);
+    const situation = courierSituation(flags, date);
+    const ids = situation === 'courier_recalled' || situation === 'waystone_promise'
+      ? [0, 0, 0]
+      : dailyTemplateIds(
+          canonicalId({ namespace: character.namespace, chainId: character.chain_id === null ? null : Number(character.chain_id), contract: character.contract, tokenId: character.token_id }),
+          date,
+        );
     for (let slot = 0; slot < ids.length; slot++) {
       const id = `${character.id}#${date}#${slot}`;
       await client.query(
@@ -406,21 +488,70 @@ export async function commitActionTx(
 
     const day = await ensureDay(client, character, now);
     if (day.used >= DAILY_ACTIONS) throw new AppError('DAILY_LIMIT');
+    const open = await loadConsequences(client, character.id);
+    const evRows = await client.query<{ sequence: number; created_at: Date }>(
+      'SELECT sequence, created_at FROM game_events WHERE character_id = $1 ORDER BY sequence ASC',
+      [character.id],
+    );
+    const flags = await storyFlags(evRows.rows, open);
+    const situation = courierSituation(flags, day.date);
     const instance = day.instances.find(i => i.id === req.instanceId);
     if (!instance) throw new AppError('INVALID_INPUT', 'Unknown encounter instance');
     if (instance.resolved_event_id) throw new AppError('STATE_CHANGED', 'Encounter already resolved');
-    const nextOpen = day.instances.find(i => i.resolved_event_id === null);
-    if (!nextOpen || nextOpen.id !== instance.id) throw new AppError('STATE_CHANGED', 'Only the next unresolved encounter can be played');
+    const expected = nextPlayable(situation, day.instances);
+    if (!expected || expected.id !== instance.id) throw new AppError('STATE_CHANGED', 'Only the next unresolved encounter can be played');
 
-    let choice;
-    try {
-      choice = findChoice(instance.template_id, req.choiceId);
-    } catch {
-      throw new AppError('INVALID_INPUT', 'Unknown choice');
+    let choice: ChoiceDef;
+    if (instance.template_id === 0) {
+      choice = courierChoices(flags, situation).find(c => c.id === req.choiceId) ?? null as unknown as ChoiceDef;
+    } else {
+      choice = null as unknown as ChoiceDef;
+    }
+    if (!choice) {
+      try {
+        choice = findChoice(instance.template_id, req.choiceId);
+      } catch {
+        throw new AppError('INVALID_INPUT', 'Unknown choice');
+      }
     }
     const before = toStats(character);
     const elig = checkEligibility(choice, before);
     if (!elig.eligible) throw new AppError('CHOICE_UNAVAILABLE', elig.lockReason);
+
+    let outcomeText = choice.outcome;
+    let openedConsequence: ConsequenceState | null = null;
+    let closedConsequence: ConsequenceState | null = null;
+    if (instance.template_id === 0) {
+      const result = consequenceForChoice(instance.template_id, choice.id, flags, day.date);
+      if (result) {
+        if (result.close) {
+          const { rows: closedRows } = await client.query<ConsequenceRow>(
+            `UPDATE story_consequences SET status = $1, closed_event_id = NULL, updated_at = $2
+             WHERE character_id = $3 AND kind = $4 AND status = 'open'
+             RETURNING id, character_id, kind, status, opened_sequence, origin_template_id, origin_choice_id, closed_event_id`,
+            [result.close.status, now.toISOString(), character.id, result.close.kind],
+          );
+          if (closedRows[0]) {
+            closedConsequence = toConsequence(closedRows[0]);
+            outcomeText += ' The obligation is settled.';
+          }
+        }
+        if (result.open) {
+          const seq = await nextSequence(client, character.id);
+          const { rows: openRows } = await client.query<ConsequenceRow>(
+            `INSERT INTO story_consequences (character_id, kind, status, opened_sequence, origin_template_id, origin_choice_id)
+             VALUES ($1, $2, 'open', $3, $4, $5)
+             ON CONFLICT (character_id, kind) WHERE status = 'open' DO NOTHING
+             RETURNING id, character_id, kind, status, opened_sequence, origin_template_id, origin_choice_id`,
+            [character.id, result.open.kind, seq, instance.template_id, result.open.originChoiceId],
+          );
+          if (openRows[0]) {
+            openedConsequence = toConsequence(openRows[0]);
+            outcomeText += ' An unfinished promise now rides with the Chog.';
+          }
+        }
+      }
+    }
 
     const after = applyDelta(before, choice.delta);
     const ev = await appendEvent(client, character, epoch.id, {
@@ -434,6 +565,12 @@ export async function commitActionTx(
       verificationBlock: req.verificationBlock ?? null,
       now,
     });
+    if (openedConsequence) {
+      await client.query('UPDATE story_consequences SET opened_sequence = $1 WHERE character_id = $2 AND kind = $3 AND status = \'open\'', [ev.sequence, character.id, openedConsequence.kind]);
+    }
+    if (closedConsequence) {
+      await client.query('UPDATE story_consequences SET closed_event_id = $1, updated_at = $2 WHERE character_id = $3 AND kind = $4 AND status = $5', [ev.id, now.toISOString(), character.id, closedConsequence.kind, closedConsequence.status]);
+    }
     await client.query(
       'UPDATE encounter_instances SET resolved_event_id = $1 WHERE id = $2 AND resolved_event_id IS NULL',
       [ev.id, instance.id],
@@ -452,11 +589,13 @@ export async function commitActionTx(
       titleBefore: deriveTitle(before),
       titleAfter: deriveTitle(after),
       label: choice.label,
-      text: choice.outcome,
+      text: outcomeText,
       actionsUsed: day.used + 1,
       left: DAILY_ACTIONS - (day.used + 1),
       nextResetUtc: nextUtcMidnight(now).toISOString(),
       version: character.version + 1,
+      consequence: openedConsequence,
+      obligationClosed: closedConsequence,
     };
 
     if (opts?.failAfterApply) {
@@ -523,12 +662,25 @@ export async function setIntentionTx(
   }
 }
 
+export interface PgPlayState {
+  stats: Stats;
+  title: Title;
+  version: number;
+  actionsUsed: number;
+  nextResetUtc: string;
+  encounter: { instanceId: string; templateId: number; story?: StoryFlags; situation?: StorySituation } | null;
+  intention: 'embrace' | 'redeem' | null;
+  epochId: string;
+  openObligations: ConsequenceState[];
+  allConsequences: ConsequenceState[];
+}
+
 export async function getPlayState(
   pool: Pool,
   characterId: string,
   controller: string,
   now: Date,
-): Promise<{ stats: Stats; title: Title; version: number; actionsUsed: number; nextResetUtc: string; encounter: { instanceId: string; templateId: number } | null; intention: 'embrace' | 'redeem' | null; epochId: string }> {
+): Promise<PgPlayState> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -536,17 +688,26 @@ export async function getPlayState(
     const epoch = await lockActiveEpoch(client, character);
     requireController(epoch, controller);
     const day = await ensureDay(client, character, now);
-    const next = day.instances.find(i => i.resolved_event_id === null) ?? null;
+    const open = await loadConsequences(client, character.id);
+    const evRows = await client.query<{ sequence: number; created_at: Date }>(
+      'SELECT sequence, created_at FROM game_events WHERE character_id = $1 ORDER BY sequence ASC',
+      [characterId],
+    );
+    const flags = await storyFlags(evRows.rows, open);
+    const situation = courierSituation(flags, day.date);
+    const next = nextPlayable(situation, day.instances);
     const stats = toStats(character);
-    const result = {
+    const result: PgPlayState = {
       stats,
       title: deriveTitle(stats),
       version: character.version,
       actionsUsed: day.used,
       nextResetUtc: nextUtcMidnight(now).toISOString(),
-      encounter: next ? { instanceId: next.id, templateId: next.template_id } : null,
+      encounter: next ? { instanceId: next.id, templateId: next.template_id, story: flags, situation } : null,
       intention: epoch.intention,
       epochId: epoch.id,
+      openObligations: open.filter(c => c.status === 'open'),
+      allConsequences: open,
     };
     await client.query('COMMIT');
     return result;

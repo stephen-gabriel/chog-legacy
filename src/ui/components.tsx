@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import s from "./ui.module.css";
 import { Icon } from "./Icon";
+import { EMPTY_STORY, TEMPLATES, courierChoices } from "../shared/rules";
+import type { ConsequenceState, StoryFlags } from "../shared/rules";
 import type {
   Choice,
   Encounter,
@@ -19,6 +21,67 @@ const short = (v: string) =>
 const art = "/art/ashen-storybook.png";
 const displayName = (p: Profile) =>
   p.mode === "practice" ? "Ashen Chog" : p.name;
+
+const OBLIGATION_NAME: Record<ConsequenceState["kind"], string> = {
+  waystone_promise: "Unfinished waystone promise",
+  courier_trust: "Courier trust from earlier",
+  tax_grudge: "Tax grudge from earlier",
+};
+
+const ORIGIN_CHAPTER: Record<string, string> = {
+  share: "A stranded courier",
+  reward: "A stranded courier",
+  pass: "A stranded courier",
+  recall_listen: "The courier returns",
+  settle_tax: "The courier returns",
+  refuse_courier: "The courier returns",
+  take_waystone: "The courier returns",
+  deny_debt: "The courier returns",
+  carry: "The waystone promise",
+  hand_back: "The waystone promise",
+  sell: "The waystone promise",
+};
+
+function allChoiceLabels(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const t of TEMPLATES) for (const c of t.choices) out[c.id] = c.label;
+  const flags = (kind: ConsequenceState["kind"], originChoiceId: string): StoryFlags => ({
+    openConsequences: [
+      { kind, status: "open", openedSequence: 1, originTemplateId: 0, originChoiceId },
+    ],
+    latestCourierOpenedAtDay: "2026-10-01",
+  });
+  const variants: StoryFlags[] = [
+    EMPTY_STORY,
+    flags("courier_trust", "share"),
+    flags("tax_grudge", "reward"),
+    flags("waystone_promise", "settle_tax"),
+    flags("waystone_promise", "take_waystone"),
+  ];
+  for (const f of variants) {
+    for (const sit of ["base", "courier_recalled", "waystone_promise"] as const) {
+      for (const c of courierChoices(f, sit)) out[c.id] = c.label;
+    }
+  }
+  return out;
+}
+
+const CHOICE_LABELS = allChoiceLabels();
+
+function originChapter(o: ConsequenceState): string {
+  if (o.originChoiceId && ORIGIN_CHAPTER[o.originChoiceId]) {
+    return ORIGIN_CHAPTER[o.originChoiceId];
+  }
+  const t = o.originTemplateId === null || o.originTemplateId === undefined
+    ? undefined
+    : TEMPLATES[o.originTemplateId];
+  return t ? t.title : "An earlier chapter";
+}
+
+function originChoice(o: ConsequenceState): string | null {
+  if (!o.originChoiceId) return null;
+  return CHOICE_LABELS[o.originChoiceId] ?? null;
+}
 
 export function PracticeBar({
   h,
@@ -761,6 +824,26 @@ export function ProfileView({
             </div>
           </section>
           <Chronicle p={p} h={h} />
+          {p.openObligations && p.openObligations.length > 0 && (
+            <section className={s.card}>
+              <p className={s.eyebrow}>Unfinished obligations</p>
+              <h2>{p.openObligations.length} open {p.openObligations.length === 1 ? 'promise' : 'promises'}</h2>
+              <ul className={s.keeps}>
+                {p.openObligations.map(o => (
+                  <li key={o.kind}>
+                    <Icon name="book" size={16} />
+                    <span>
+                      {OBLIGATION_NAME[o.kind]}
+                      <span className={s.fine}> · Began in “{originChapter(o)}”{originChoice(o) ? ` · ${originChoice(o)}` : ""}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className={s.fine}>
+                These must be resolved before the next chapter. Current controller can settle them.
+              </p>
+            </section>
+          )}
           <div className={s.row}>
             <CopyProfileLink />
           </div>
@@ -884,6 +967,12 @@ export function Inheritance({
               <Icon name="check" size={16} /> Today’s actions (
               {3 - p.actionsUsed} left)
             </li>
+            {p.openObligations?.map(o => (
+              <li key={o.kind}>
+                <Icon name="book" size={16} /> {OBLIGATION_NAME[o.kind]}
+                <span className={s.fine}> · From “{originChapter(o)}”</span>
+              </li>
+            ))}
           </ul>
           <p className={s.fine}>
             Choosing an intention doesn’t reset anything.

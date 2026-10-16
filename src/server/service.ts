@@ -3,15 +3,20 @@ import {
   INITIAL_STATS,
   RULESET_VERSION,
   applyDelta,
+  applyConsequence,
   buildEncounterView,
+  consequenceForChoice,
+  courierChoices,
+  courierSituation,
   dailyTemplateIds,
   deriveTitle,
   findChoice,
+  getTemplate,
   checkEligibility,
   nextUtcMidnight,
   utcDateOf,
 } from '../shared/rules';
-import type { EncounterView, Stats } from '../shared/rules';
+import type { ChoiceDef, ConsequenceState, EncounterView, Stats, StoryFlags, StorySituation } from '../shared/rules';
 import { AppError } from './errors';
 
 export interface Clock {
@@ -19,6 +24,21 @@ export interface Clock {
 }
 
 export const systemClock: Clock = { now: () => new Date() };
+
+const PRACTICE_CLOCK_KEY = 'chog-legacy:practice:clock';
+
+function practiceClockIso(): string | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  const v = sessionStorage.getItem(PRACTICE_CLOCK_KEY);
+  return v && !Number.isNaN(Date.parse(v)) ? v : null;
+}
+
+export const practiceClock: Clock = {
+  now: () => {
+    const iso = practiceClockIso();
+    return iso ? new Date(iso) : systemClock.now();
+  },
+};
 
 export type EventType = 'game' | 'ownership' | 'intention';
 export type Intention = 'embrace' | 'redeem';
@@ -65,6 +85,11 @@ export interface EventRecord {
   fixture: boolean;
 }
 
+export interface ConsequenceRecord extends ConsequenceState {
+  characterId: string;
+  status: ConsequenceState['status'];
+}
+
 export interface BudgetRecord {
   characterId: string;
   date: string;
@@ -95,6 +120,7 @@ export interface DbState {
   instances: InstanceRecord[];
   receipts: ReceiptRecord[];
   sequences: Record<string, number>;
+  consequences: ConsequenceRecord[];
 }
 
 export interface CommitReceipt {
@@ -111,6 +137,8 @@ export interface CommitReceipt {
   nextResetUtc: string;
   version: number;
   duplicate?: boolean;
+  consequence?: ConsequenceRecord | null;
+  obligationClosed?: ConsequenceRecord | null;
 }
 
 export interface PlayView {
@@ -138,6 +166,8 @@ export interface ProfileModel {
   lastThreeGameEvents: EventRecord[];
   epochCount: number;
   instanceDate: string | null;
+  openObligations: ConsequenceRecord[];
+  consequences: ConsequenceRecord[];
 }
 
 export interface ActionRequest {
@@ -156,7 +186,28 @@ export interface SyncResult {
 }
 
 export function emptyDb(): DbState {
-  return { characters: [], epochs: [], events: [], budgets: [], instances: [], receipts: [], sequences: {} };
+  return { characters: [], epochs: [], events: [], budgets: [], instances: [], receipts: [], sequences: {}, consequences: [] };
+}
+
+export function storyFlagsFor(s: Pick<DbState, 'consequences' | 'events'>, characterId: string): StoryFlags {
+  const openConsequences: ConsequenceState[] = (s.consequences ?? [])
+    .filter(c => c.characterId === characterId)
+    .map(c => ({
+      kind: c.kind,
+      status: c.status,
+      openedSequence: c.openedSequence,
+      originTemplateId: c.originTemplateId,
+      originChoiceId: c.originChoiceId,
+    }));
+  const openCourier = openConsequences
+    .filter(c => (c.kind === 'courier_trust' || c.kind === 'tax_grudge') && c.status === 'open')
+    .sort((a, b) => a.openedSequence - b.openedSequence)[0];
+  let openedDay: string | null = null;
+  if (openCourier) {
+    const ev = (s.events ?? []).find(e => e.characterId === characterId && e.sequence === openCourier.openedSequence);
+    openedDay = ev ? ev.createdAt.slice(0, 10) : null;
+  }
+  return { openConsequences, latestCourierOpenedAtDay: openedDay };
 }
 
 export function canonicalIdentity(c: Pick<CharacterRecord, 'namespace' | 'chainId' | 'contract' | 'tokenId'>): string {
@@ -221,7 +272,11 @@ export class GameService {
     }
     let instances = s.instances.filter(i => i.characterId === char.id && i.date === date);
     if (instances.length === 0) {
-      const ids = dailyTemplateIds(canonicalIdentity(char), date);
+      const flags = storyFlagsFor(s, char.id);
+      const situation = courierSituation(flags, date);
+      const ids = situation === 'courier_recalled' || situation === 'waystone_promise'
+        ? [0, 0, 0]
+        : dailyTemplateIds(canonicalIdentity(char), date);
       instances = ids.map((templateId, slot) => ({
         id: `${char.id}#${date}#${slot}`,
         characterId: char.id,
@@ -234,6 +289,13 @@ export class GameService {
     }
     instances.sort((a, b) => a.slot - b.slot);
     return { budget, instances, date };
+  }
+
+  private nextPlayable(instances: InstanceRecord[], situation: StorySituation): InstanceRecord | null {
+    const open = instances.filter(i => i.resolvedEventId === null);
+    if (open.length === 0) return null;
+    if (situation === 'base') return open[0];
+    return open.find(i => i.templateId === 0) ?? open[0];
   }
 
   private appendEvent(
@@ -303,6 +365,8 @@ export class GameService {
         lastThreeGameEvents,
         epochCount: s.epochs.filter(e => e.characterId === char.id).length,
         instanceDate: instances[0]?.date ?? null,
+        openObligations: s.consequences.filter(c => c.characterId === char.id && c.status === 'open'),
+        consequences: s.consequences.filter(c => c.characterId === char.id),
       };
     });
   }
@@ -311,8 +375,10 @@ export class GameService {
     return this.run(s => {
       const now = this.clock.now();
       const { char, epoch } = this.requireController(s, characterId, controller);
-      const { budget, instances } = this.ensureDay(s, char, now);
-      const next = instances.find(i => i.resolvedEventId === null) ?? null;
+      const { budget, instances, date } = this.ensureDay(s, char, now);
+      const flags = storyFlagsFor(s, char.id);
+      const situation = courierSituation(flags, date);
+      const next = this.nextPlayable(instances, situation);
       const stats: Stats = { trust: char.trust, notoriety: char.notoriety, supplies: char.supplies };
       return {
         stats,
@@ -320,7 +386,7 @@ export class GameService {
         version: char.version,
         actionsUsed: budget.used,
         nextResetUtc: this.nextResetUtc(now),
-        encounter: next ? buildEncounterView(next.templateId, next.id, stats) : null,
+        encounter: next ? buildEncounterView(next.templateId, next.id, stats, flags, date) : null,
         instanceDate: next?.date ?? null,
         intention: epoch.intention,
         epochId: epoch.id,
@@ -351,6 +417,8 @@ export class GameService {
       if (budget.used >= DAILY_ACTIONS) {
         throw new AppError('DAILY_LIMIT');
       }
+      const flags = storyFlagsFor(s, char.id);
+      const situation = courierSituation(flags, date);
       const instance = s.instances.find(i => i.id === req.instanceId);
       if (!instance || instance.characterId !== char.id) throw new AppError('INVALID_INPUT', 'Unknown encounter instance');
       if (instance.date !== date) {
@@ -359,17 +427,22 @@ export class GameService {
       if (instance.resolvedEventId) {
         throw new AppError('STATE_CHANGED', 'Encounter already resolved');
       }
-      const expectedSlot = instances.find(i => i.resolvedEventId === null)?.id;
-      if (instance.id !== expectedSlot) {
+      const expected = this.nextPlayable(instances, situation);
+      if (!expected || instance.id !== expected.id) {
         throw new AppError('STATE_CHANGED', 'Only the next unresolved encounter can be played');
       }
 
       const template = instance.templateId;
-      let choice;
-      try {
-        choice = findChoice(template, req.choiceId);
-      } catch {
-        throw new AppError('INVALID_INPUT', 'Unknown choice');
+      let choice: ChoiceDef | null = null;
+      if (template === 0) {
+        choice = courierChoices(flags, situation).find(c => c.id === req.choiceId) ?? null;
+      }
+      if (!choice) {
+        try {
+          choice = findChoice(getTemplate(template), req.choiceId);
+        } catch {
+          throw new AppError('INVALID_INPUT', 'Unknown choice');
+        }
       }
       const before: Stats = { trust: char.trust, notoriety: char.notoriety, supplies: char.supplies };
       const elig = checkEligibility(choice, before);
@@ -383,6 +456,31 @@ export class GameService {
       char.supplies = after.supplies;
       char.version += 1;
       budget.used += 1;
+      let outcomeText = choice.outcome;
+      let consequenceNote: ConsequenceRecord | null = null;
+      let obligationClosed: ConsequenceRecord | null = null;
+      if (template === 0) {
+        const result = consequenceForChoice(template, choice.id, flags, date);
+        if (result) {
+          const nextFlags = applyConsequence(flags, result, (s.sequences[char.id] ?? 0) + 1, date, template);
+          s.consequences = s.consequences.filter(c => c.characterId !== char.id);
+          for (const c of nextFlags.openConsequences) {
+            s.consequences.push({ characterId: char.id, ...c });
+          }
+          if (result.close) {
+            const closed = s.consequences.find(c => c.characterId === char.id && c.kind === result.close!.kind && c.status === result.close!.status);
+            if (closed) obligationClosed = closed;
+            outcomeText += ' The obligation is settled.';
+          }
+          if (result.open) {
+            const opened = s.consequences.find(c => c.characterId === char.id && c.kind === result.open!.kind && c.status === 'open');
+            if (opened) {
+              consequenceNote = opened;
+              outcomeText += ' An unfinished promise now rides with the Chog.';
+            }
+          }
+        }
+      }
       const ev = this.appendEvent(
         s, char, epoch, epoch.controller, 'game',
         `${choice.label}. ${effectSummary(choice.delta)}`,
@@ -398,11 +496,13 @@ export class GameService {
         titleBefore: deriveTitle(before),
         titleAfter: deriveTitle(after),
         label: choice.label,
-        text: choice.outcome,
+        text: outcomeText,
         actionsUsed: budget.used,
         left: DAILY_ACTIONS - budget.used,
         nextResetUtc: this.nextResetUtc(now),
         version: char.version,
+        consequence: consequenceNote,
+        obligationClosed,
       };
       s.receipts.push({ key: req.idempotencyKey, characterId: char.id, requestHash, payload: receipt });
       return receipt;

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { Pool } from 'pg';
+import { Pool } from 'pg';
 import { AppError } from '../../src/server/errors';
 import { DAILY_ACTIONS, checkEligibility, dailyTemplateIds, getTemplate, utcDateOf } from '../../src/shared/rules';
 import {
@@ -409,6 +409,170 @@ describe.runIf(gate.ok)('postgres game service (real database)', () => {
       }),
       'INVALID_INPUT',
     );
+  });
+});
+
+describe('story arc: courier debt (DB)', () => {
+  it('persists waystone obligation and ownership transfer preserves it', async () => {
+    const pool = await createCleanPool(gate.url!);
+    if (!pool) return;
+    try {
+      const act = await activateTx(pool, ID, WALLET_A, null, NOW);
+      const characterId = act.characterId;
+      const day0 = new Date('2026-10-15T12:00:00.000Z');
+      const st0 = await getPlayState(pool, characterId, WALLET_A, day0);
+      expect(st0.encounter).toBeTruthy();
+      let day = day0;
+      let st = st0;
+      let playedCourier = false;
+      while (!playedCourier && day.getTime() < new Date('2026-10-15T23:59:00.000Z').getTime()) {
+        const tid = st.encounter!.templateId;
+        const cid = tid === 0 ? 'share' : alwaysAvailableChoice(tid);
+        const r = await commitActionTx(pool, {
+          characterId,
+          controller: WALLET_A,
+          instanceId: st.encounter!.instanceId,
+          choiceId: cid,
+          expectedVersion: st.version,
+          idempotencyKey: `arc-0-${Date.now()}-${Math.random()}`,
+          now: day,
+        });
+        if (tid === 0) {
+          expect(r.consequence?.kind).toBe('courier_trust');
+          playedCourier = true;
+        }
+        day = new Date(day.getTime() + 3600000);
+        st = await getPlayState(pool, characterId, WALLET_A, day);
+      }
+      expect(playedCourier).toBe(true);
+      const day1 = new Date('2026-10-16T12:00:00.000Z');
+      const st1 = await getPlayState(pool, characterId, WALLET_A, day1);
+      expect(st1.encounter?.templateId).toBe(0);
+      expect(st1.encounter?.situation).toBe('courier_recalled');
+      const settle = await commitActionTx(pool, {
+        characterId,
+        controller: WALLET_A,
+        instanceId: st1.encounter!.instanceId,
+        choiceId: 'settle_tax',
+        expectedVersion: st1.version,
+        idempotencyKey: `arc-1-${Date.now()}`,
+        now: day1,
+      });
+      expect(settle.consequence?.kind).toBe('waystone_promise');
+      const day2 = new Date('2026-10-17T12:00:00.000Z');
+      const st2 = await getPlayState(pool, characterId, WALLET_A, day2);
+      expect(st2.encounter?.situation).toBe('waystone_promise');
+      const carry = await commitActionTx(pool, {
+        characterId,
+        controller: WALLET_A,
+        instanceId: st2.encounter!.instanceId,
+        choiceId: 'carry',
+        expectedVersion: st2.version,
+        idempotencyKey: `arc-2-${Date.now()}`,
+        now: day2,
+      });
+      expect(carry.obligationClosed?.status).toBe('fulfilled');
+      const day3 = new Date('2026-10-18T12:00:00.000Z');
+      const st3 = await getPlayState(pool, characterId, WALLET_A, day3);
+      expect(st3.openObligations).toHaveLength(0);
+      expect(st3.allConsequences.some(c => c.kind === 'waystone_promise' && c.status === 'fulfilled')).toBe(true);
+    } finally {
+      pool.end().catch(() => undefined);
+    }
+  });
+
+  it('persists an open waystone obligation across service restart', async () => {
+    const pool = await createCleanPool(gate.url!);
+    if (!pool) return;
+    let restarted: Pool | null = null;
+    try {
+      const act = await activateTx(pool, ID, WALLET_A, null, NOW);
+      const characterId = act.characterId;
+      const day0 = new Date('2026-10-15T12:00:00.000Z');
+      let st = await getPlayState(pool, characterId, WALLET_A, day0);
+      let day = day0;
+      let playedCourier = false;
+      while (!playedCourier && day.getTime() < new Date('2026-10-15T23:59:00.000Z').getTime()) {
+        const tid = st.encounter!.templateId;
+        const cid = tid === 0 ? 'share' : alwaysAvailableChoice(tid);
+        await commitActionTx(pool, {
+          characterId,
+          controller: WALLET_A,
+          instanceId: st.encounter!.instanceId,
+          choiceId: cid,
+          expectedVersion: st.version,
+          idempotencyKey: `restart-0-${Date.now()}-${Math.random()}`,
+          now: day,
+        });
+        if (tid === 0) playedCourier = true;
+        day = new Date(day.getTime() + 3600000);
+        st = await getPlayState(pool, characterId, WALLET_A, day);
+      }
+      expect(playedCourier).toBe(true);
+      const day1 = new Date('2026-10-16T12:00:00.000Z');
+      const st1 = await getPlayState(pool, characterId, WALLET_A, day1);
+      expect(st1.encounter?.templateId).toBe(0);
+      expect(st1.encounter?.situation).toBe('courier_recalled');
+      const settle = await commitActionTx(pool, {
+        characterId,
+        controller: WALLET_A,
+        instanceId: st1.encounter!.instanceId,
+        choiceId: 'settle_tax',
+        expectedVersion: st1.version,
+        idempotencyKey: `restart-1-${Date.now()}`,
+        now: day1,
+      });
+      expect(settle.consequence?.kind).toBe('waystone_promise');
+      expect(settle.consequence?.status).toBe('open');
+
+      await pool.end();
+      restarted = await new Promise<Pool>((resolve) => {
+        const p: Pool = new Pool({ connectionString: gate.url!, max: 6, connectionTimeoutMillis: 10_000 });
+        resolve(p);
+      });
+      const day2 = new Date('2026-10-16T18:00:00.000Z');
+      const st2 = await getPlayState(restarted, characterId, WALLET_A, day2);
+      expect(st2.encounter?.situation).toBe('waystone_promise');
+      expect(st2.openObligations).toHaveLength(1);
+      expect(st2.openObligations[0].kind).toBe('waystone_promise');
+      expect(st2.openObligations[0].originChoiceId).toBe('settle_tax');
+      const carry = await commitActionTx(restarted, {
+        characterId,
+        controller: WALLET_A,
+        instanceId: st2.encounter!.instanceId,
+        choiceId: 'carry',
+        expectedVersion: st2.version,
+        idempotencyKey: `restart-2-${Date.now()}`,
+        now: day2,
+      });
+      expect(carry.obligationClosed?.status).toBe('fulfilled');
+    } finally {
+      restarted?.end().catch(() => undefined);
+      pool.end().catch(() => undefined);
+    }
+  });
+
+  it('migrates an existing character without fabricating obligations', async () => {
+    const pool = await createCleanPool(gate.url!);
+    if (!pool) return;
+    try {
+      const act = await activateTx(pool, ID, WALLET_A, null, NOW);
+      const characterId = act.characterId;
+      const st = await getPlayState(pool, characterId, WALLET_A, NOW);
+      expect(st.openObligations).toHaveLength(0);
+      expect(st.allConsequences).toHaveLength(0);
+      const { rows: mig } = await pool.query<{ name: string }>(
+        "SELECT name FROM schema_migrations WHERE name = '0002_story_consequences.sql'",
+      );
+      expect(mig).toHaveLength(1);
+      const { rows: cons } = await pool.query(
+        'SELECT * FROM story_consequences WHERE character_id = $1',
+        [characterId],
+      );
+      expect(cons).toHaveLength(0);
+    } finally {
+      pool.end().catch(() => undefined);
+    }
   });
 });
 

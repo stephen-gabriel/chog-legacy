@@ -1,5 +1,5 @@
 import type { ErrorCode } from '../server/errors';
-import type { Stats, Title } from './rules';
+import type { Stats, Title, ConsequenceState } from './rules';
 
 export interface ApiIdentity {
   namespace: string;
@@ -88,6 +88,7 @@ export interface ApiProfile {
   chronicle: ApiGameEvent[];
   provenance: ApiChainEvent[];
   historySync: ApiHistorySync | null;
+  openObligations?: import('./rules').ConsequenceState[];
 }
 
 export interface ApiChroniclePage {
@@ -147,6 +148,8 @@ export interface ApiPlayState {
   intention: 'embrace' | 'redeem' | null;
   epochId: string;
   encounter: import('./rules').EncounterView | null;
+  openObligations?: ConsequenceState[];
+  allConsequences?: ConsequenceState[];
 }
 
 export interface ApiIntentionResult {
@@ -168,4 +171,6 @@ export interface ApiCommitReceipt {
   nextResetUtc: string;
   version: number;
   duplicate?: boolean;
+  consequence?: ConsequenceState | null;
+  obligationClosed?: ConsequenceState | null;
 }

@@ -77,6 +77,50 @@ T = trust, N = notoriety, S = supplies. These effects are canonical. Names and t
 
 Consequences are deterministic and shown before confirmation. A villain path provides meaningful access and supply gains, while reducing cooperation; redemption costs choices/supplies but opens trust-dependent access. There is no promise of perfect balance. Tune only by versioning the ruleset and updating docs/tests; never retroactively recompute past events.
 
+### 4.1 Story arc: the courier's debt (ruleset `legacy-v1`)
+
+One authored arc extends the stranded courier encounter (template 0). The courier, the tax-factor and the waystone are **fictional story characters (NPCs)** — never presented as other holders or wallets. The server owns eligibility, exact previews, consequence state and resolution. Practice runs the same pure rules on isolated storage.
+
+**Chapter 1 — A stranded courier.** The three FRD choices are unchanged in their table effects. Committed choices create a persistent *consequence* row (status `open`), shown in the journal and inheritance summary:
+
+| Choice | Consequence | Story |
+| --- | --- | --- |
+| `share` | `courier_trust` (kind `courier_trust`) | The courier keeps your measure of kindness. |
+| `reward` | `tax_grudge` (kind `tax_grudge`) | The courier still tells the road your price. |
+| `pass` | `none` | You walk on. No obligation is kept. |
+
+`pass` leaves no consequence; the arc is always closed (no dead end).
+
+**Chapter 2 — The courier returns.** Deterministically, on the day *after* a courier consequence is opened, template 0's three assigned slots become a locked *recall* sequence. Slot 0 recalls the outcome and the two later slots offer the branches. Text, choices and options depend on the open consequence; the FRD stat table for every choice is unchanged.
+
+`courier_trust` recall — the courier returns with a seized waystone and asks you to settle their tax with the tax-factor (fictional NPC):
+
+| Slot | Choice | Eligibility | Effect (T, N, S) | Result |
+| --- | --- | --- | --- | --- |
+| 0 | Hear the courier out (recall) | Always | 0, 0, 0 | Framing only; same chapter continues. |
+| 1 | Settle the tax from your own pack | `S ≥ 1` | +10, −3, −1 | Closes `courier_trust`; opens `waystone_promise` — the courier asks you to carry the waystone to the wayhouse. |
+| 2 | Refuse and leave the courier to the factor | Always | −5, +7, +1 | Closes `courier_trust` cleanly; no new obligation. |
+
+`tax_grudge` recall — the courier demands you deliver the waystone yourself:
+
+| Slot | Choice | Eligibility | Effect (T, N, S) | Result |
+| --- | --- | --- | --- | --- |
+| 0 | Hear the courier out (recall) | Always | 0, 0, 0 | Framing only. |
+| 1 | Take the waystone to the wayhouse | Always | −5, +7, +1 | Closes `tax_grudge`; opens `waystone_promise`. |
+| 2 | Deny the debt and walk on | Always | 0, 0, 0 | Closes `tax_grudge`; the factor remembers. No new obligation. |
+
+**Chapter 3 — The waystone promise.** `waystone_promise` is an **unfinished obligation**. While open, template 0's three slots are locked to the resolution sequence and the other five templates are suppressed until it is resolved (so it cannot be missed). Only the **current controller** may resolve it; the outgoing controller receives `NOT_CURRENT_OWNER` before any write. Resolution spends one daily action; retries cannot resolve twice.
+
+| Slot | Choice | Eligibility | Effect (T, N, S) | Result |
+| --- | --- | --- | --- | --- |
+| 0 | Carry the waystone to the wayhouse | Always | +12, −5, −1 | Closes `waystone_promise` as **fulfilled**. Ending of the arc. |
+| 1 | Hand the waystone back to the courier | Always | −5, +8, +1 | Closes `waystone_promise` as **returned**. The courier carries the weight; the debt is gone. |
+| 2 | Sell the waystone at the crossroads | Always | −10, +10, +2 | Closes `waystone_promise` as **sold**. The factor remembers a Chog that keeps nothing. |
+
+Every branch ends. Once closed, a consequence is never reopened; a later courier encounter starts the arc afresh only after the previous obligation is resolved.
+
+**Persistence and inheritance.** A migration adds `story_consequences` (status `open` | `fulfilled` | `returned` | `sold` | `refused`) keyed to the character. Ownership changes preserve open and closed consequences with stats, supplies, history and remaining daily actions. The journal (chronicle) and inheritance summary show each open obligation with its originating chapter. Characters that predate this feature have no fabricated obligations — rows are created only by committed arc choices.
+
 ## 5. Commit semantics
 
 Within one database transaction, lock the character, verify expected version, active epoch, instance/date, quota, eligibility and idempotency, then append the gameplay event, update stats, resolve the instance and increment usage/version. All effects succeed together or none do.

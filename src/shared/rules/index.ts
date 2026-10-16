@@ -1,10 +1,17 @@
 import { getTemplate } from './encounters';
 import { applyDelta, deriveTitle } from './stats';
-import type { ChoiceDef, ChoiceView, EncounterView, Stats } from './types';
+import {
+  courierChoices,
+  courierSituation,
+  courierText,
+  type StoryFlags,
+} from './story';
+import type { ChoiceDef, ChoiceView, EncounterView, Stats, TemplateDef } from './types';
 
 export * from './types';
 export * from './stats';
 export * from './daily';
+export * from './story';
 export { TEMPLATES, TEMPLATE_COUNT, getTemplate } from './encounters';
 
 function signed(n: number): string {
@@ -32,7 +39,7 @@ export function checkEligibility(choice: ChoiceDef, s: Stats): { eligible: boole
   return { eligible: true };
 }
 
-export function buildChoiceView(choice: ChoiceDef, s: Stats): ChoiceView {
+function buildChoiceView(choice: ChoiceDef, s: Stats): ChoiceView {
   const { eligible, lockReason } = checkEligibility(choice, s);
   return {
     id: choice.id,
@@ -45,7 +52,7 @@ export function buildChoiceView(choice: ChoiceDef, s: Stats): ChoiceView {
   };
 }
 
-export function buildEncounterView(templateId: number, instanceId: string, s: Stats): EncounterView {
+function baseEncounter(templateId: number, instanceId: string, s: Stats): EncounterView {
   const t = getTemplate(templateId);
   return {
     instanceId,
@@ -56,10 +63,23 @@ export function buildEncounterView(templateId: number, instanceId: string, s: St
   };
 }
 
-export function findChoice(templateId: number, choiceId: string): ChoiceDef {
-  const t = getTemplate(templateId);
+export function buildEncounterView(templateId: number, instanceId: string, s: Stats, story?: StoryFlags, today?: string): EncounterView {
+  if (!story || templateId !== 0) return baseEncounter(templateId, instanceId, s);
+  const situation = courierSituation(story, today ?? new Date().toISOString().slice(0, 10));
+  if (situation === 'base') return baseEncounter(templateId, instanceId, s);
+  return {
+    instanceId,
+    templateId,
+    title: situation === 'waystone_promise' ? 'The waystone promise' : 'The courier returns',
+    text: courierText(story, situation),
+    choices: courierChoices(story, situation).map(c => buildChoiceView(c, s)),
+  };
+}
+
+export function findChoice(template: number | TemplateDef, choiceId: string): ChoiceDef {
+  const t = typeof template === 'number' ? getTemplate(template) : template;
   const c = t.choices.find(x => x.id === choiceId);
-  if (!c) throw new Error(`Unknown choice ${choiceId} on template ${templateId}`);
+  if (!c) throw new Error(`Unknown choice ${choiceId} on template ${t.id}`);
   return c;
 }
 

@@ -6,6 +6,7 @@ import {
   PRACTICE_CHARACTER_ID,
   canonicalIdentity,
   seedPractice,
+  emptyDb,
   type Clock,
 } from '@/server/service';
 import { AppError } from '@/server/errors';
@@ -41,6 +42,185 @@ function pickChoice(play: NonNullable<ReturnType<GameService['getPlay']>>['encou
 
 let keyN = 0;
 const nextKey = () => `test-key-${++keyN}`;
+
+describe('story arc: courier debt (unit)', () => {
+  function courierCharacter() {
+    const clock = clockAt('2026-10-15T10:00:00.000Z');
+    const charId = 'char-courier-arc';
+    const epochId = 'epoch-courier-arc';
+    const db = emptyDb();
+    db.characters.push({
+      id: charId,
+      namespace: 'practice',
+      chainId: null,
+      contract: null,
+      tokenId: charId,
+      trust: 0,
+      notoriety: 0,
+      supplies: 5,
+      version: 1,
+      activeEpochId: epochId,
+      createdAt: clock.now().toISOString(),
+    });
+    db.epochs.push({
+      id: epochId,
+      characterId: charId,
+      controller: CONTROLLER_A,
+      startedAt: clock.now().toISOString(),
+      endedAt: null,
+      intention: null,
+    });
+    const date = '2026-10-15';
+    for (let slot = 0; slot < 3; slot += 1) {
+      db.instances.push({
+        id: `${charId}#${date}#${slot}`,
+        characterId: charId,
+        date,
+        slot,
+        templateId: 0,
+        resolvedEventId: null,
+      });
+    }
+    const svc = new GameService(db, clock, () => {}, true);
+    return { svc, clock, db, charId };
+  }
+
+  it('share opens courier_trust and same-day play can settle into waystone_promise', () => {
+    const { svc, charId } = courierCharacter();
+    const st0 = svc.getPlay(charId, CONTROLLER_A);
+    expect(st0.encounter?.templateId).toBe(0);
+    expect(st0.encounter?.choices.map(c => c.id)).toEqual(['share', 'reward', 'pass']);
+    const r0 = svc.commitAction({
+      characterId: charId,
+      controller: CONTROLLER_A,
+      instanceId: st0.encounter!.instanceId,
+      choiceId: 'share',
+      expectedVersion: st0.version,
+      idempotencyKey: 'story-arc-0',
+    });
+    expect(r0.consequence?.kind).toBe('courier_trust');
+    const st1 = svc.getPlay(charId, CONTROLLER_A);
+    expect(st1.encounter?.templateId).toBe(0);
+    expect(st1.encounter?.title).toBe('A stranded courier');
+    const r1 = svc.commitAction({
+      characterId: charId,
+      controller: CONTROLLER_A,
+      instanceId: st1.encounter!.instanceId,
+      choiceId: 'pass',
+      expectedVersion: st1.version,
+      idempotencyKey: 'story-arc-1',
+    });
+    expect(r1.consequence).toBeNull();
+  });
+
+  it('waystone_promise resolves only for the current owner and leaves the profile clear', () => {
+    const clock = clockAt('2026-10-16T10:00:00.000Z');
+    const charId = 'char-courier-arc';
+    const db = emptyDb();
+    db.characters.push({
+      id: charId,
+      namespace: 'practice',
+      chainId: null,
+      contract: null,
+      tokenId: charId,
+      trust: 0,
+      notoriety: 0,
+      supplies: 5,
+      version: 1,
+      activeEpochId: 'epoch-courier-arc',
+      createdAt: clock.now().toISOString(),
+    });
+    db.epochs.push({
+      id: 'epoch-courier-arc',
+      characterId: charId,
+      controller: CONTROLLER_A,
+      startedAt: clock.now().toISOString(),
+      endedAt: null,
+      intention: null,
+    });
+    db.instances.push({
+      id: `${charId}#2026-10-15#0`,
+      characterId: charId,
+      date: '2026-10-15',
+      slot: 0,
+      templateId: 0,
+      resolvedEventId: 'event-courier-open',
+    });
+    db.instances.push({
+      id: `${charId}#2026-10-16#0`,
+      characterId: charId,
+      date: '2026-10-16',
+      slot: 0,
+      templateId: 0,
+      resolvedEventId: null,
+    });
+    db.instances.push({
+      id: `${charId}#2026-10-16#1`,
+      characterId: charId,
+      date: '2026-10-16',
+      slot: 1,
+      templateId: 0,
+      resolvedEventId: null,
+    });
+    db.consequences.push({
+      characterId: charId,
+      kind: 'courier_trust',
+      status: 'open',
+      openedSequence: 1,
+      originTemplateId: 0,
+      originChoiceId: 'share',
+    });
+    db.sequences[charId] = 1;
+    db.events.push({
+      id: 'event-courier-open',
+      characterId: charId,
+      epochId: 'epoch-courier-arc',
+      actor: CONTROLLER_A,
+      sequence: 1,
+      type: 'game',
+      templateId: 0,
+      choiceId: 'share',
+      rulesetVersion: 'legacy-v1',
+      text: 'Share supplies. Trust +10.',
+      before: { trust: 0, notoriety: 0, supplies: 5 },
+      after: { trust: 10, notoriety: -3, supplies: 4 },
+      titleBefore: 'The Unwritten',
+      titleAfter: 'The Unwritten',
+      createdAt: '2026-10-15T10:00:00.000Z',
+      fixture: false,
+    });
+    const svc = new GameService(db, clock, () => {}, true);
+    const st1 = svc.getPlay(charId, CONTROLLER_A);
+    expect(st1.encounter?.title).toBe('The courier returns');
+    expect(st1.encounter?.choices.map(c => c.id)).toEqual(['recall_listen', 'settle_tax', 'refuse_courier']);
+    const settle = svc.commitAction({
+      characterId: charId,
+      controller: CONTROLLER_A,
+      instanceId: st1.encounter!.instanceId,
+      choiceId: 'settle_tax',
+      expectedVersion: st1.version,
+      idempotencyKey: 'arc-promise',
+    });
+    expect(settle.consequence?.kind).toBe('waystone_promise');
+    const afterSettle = svc.getProfile(charId);
+    expect(afterSettle.openObligations).toHaveLength(1);
+    expect(afterSettle.openObligations[0].kind).toBe('waystone_promise');
+    const st2 = svc.getPlay(charId, CONTROLLER_A);
+    expect(st2.encounter?.title).toBe('The waystone promise');
+    expect(st2.encounter?.choices.map(c => c.id)).toEqual(['carry', 'hand_back', 'sell']);
+    const carry = svc.commitAction({
+      characterId: charId,
+      controller: CONTROLLER_A,
+      instanceId: st2.encounter!.instanceId,
+      choiceId: 'carry',
+      expectedVersion: st2.version,
+      idempotencyKey: 'arc-carry',
+    });
+    expect(carry.obligationClosed?.status).toBe('fulfilled');
+    const pm = svc.getProfile(charId);
+    expect(pm.openObligations).toHaveLength(0);
+  });
+});
 
 describe('practice seed (DEMO-01)', () => {
   it('seeds the feared villain at −35 / 70 / 3 under controller A with labeled fixture history', () => {

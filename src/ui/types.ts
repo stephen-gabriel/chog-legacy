@@ -1,3 +1,4 @@
+import type { ConsequenceState } from '../shared/rules';
 export type Mode = 'real' | 'practice';
 export type Title = 'The Feared' | 'The Trusted' | 'The Notorious' | 'The Unwritten';
 export type Viewer = 'visitor' | 'connected' | 'awaiting' | 'cancelled' | 'signed' | 'owner' | 'non-owner' | 'expired' | 'unsupported' | 'switched';
@@ -55,6 +56,8 @@ export interface Profile {
   lastIndexedBlock?: number;
   chronicle: Entry[];
   inheritedFrom?: { priorChapters: number; lastThree: Entry[] };
+  openObligations?: ConsequenceState[];
+  allConsequences?: ConsequenceState[];
 }
 
 export type SaveState = 'idle' | 'pending' | 'saved' | 'failed' | 'conflict' | 'duplicate';

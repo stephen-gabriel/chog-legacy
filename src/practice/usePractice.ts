@@ -8,8 +8,8 @@ import {
   GameService,
   PRACTICE_CHARACTER_ID,
   PRACTICE_TOKEN_ID,
+  practiceClock,
   seedPractice,
-  systemClock,
   type CommitReceipt,
   type EventRecord,
   type PlayView,
@@ -56,6 +56,8 @@ export function profileFromService(svc: GameService): Profile {
     intention: pm.epoch.intention,
     coverage: 'none',
     chronicle: pm.chronicleNewestFirst.map(eventToEntry),
+    openObligations: pm.openObligations,
+    allConsequences: pm.consequences,
     inheritedFrom:
       pm.epochCount > 1
         ? { priorChapters: pm.priorGameChapters, lastThree: pm.lastThreeGameEvents.map(eventToEntry) }
@@ -92,8 +94,8 @@ const SAVE_LATENCY_MS = import.meta.env.MODE === 'test' ? 0 : 300;
 export function usePractice(): PracticeController {
   const svcRef = useRef<GameService | null>(null);
   if (!svcRef.current) {
-    const db = loadPracticeDb(systemClock);
-    svcRef.current = new GameService(db, systemClock, savePracticeDb, true);
+    const db = loadPracticeDb(practiceClock);
+    svcRef.current = new GameService(db, practiceClock, savePracticeDb, true);
   }
   const svc = svcRef.current;
 
@@ -212,9 +214,9 @@ export function usePractice(): PracticeController {
 
   const reset = useCallback(() => {
     clearPracticeDb();
-    const db = seedPractice(systemClock.now());
+    const db = seedPractice(practiceClock.now());
     savePracticeDb(db);
-    svcRef.current = new GameService(db, systemClock, savePracticeDb, true);
+    svcRef.current = new GameService(db, practiceClock, savePracticeDb, true);
     setView('profile');
     setPlay(null);
     setOutcome(null);

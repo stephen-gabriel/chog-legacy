@@ -15,6 +15,7 @@ import type {
   ApiOwnership,
   ApiProfile,
 } from '../../src/shared/apiTypes';
+import type { ConsequenceState } from '../../src/shared/rules';
 import { findCharacterByIdentity, identityKey, type Identity } from './service';
 
 export interface ReadDeps {
@@ -67,9 +68,13 @@ async function readObservation(deps: ReadDeps, identity: Identity): Promise<Obse
   return rows[0] ?? null;
 }
 
-async function readGame(deps: ReadDeps, identity: Identity): Promise<{ summary: ApiGameSummary | null; chronicle: ApiGameEvent[] }> {
+async function readGame(deps: ReadDeps, identity: Identity): Promise<{
+  summary: ApiGameSummary | null;
+  chronicle: ApiGameEvent[];
+  openObligations: ConsequenceState[];
+}> {
   const character = await findCharacterByIdentity(deps.pool, identity);
-  if (!character) return { summary: null, chronicle: [] };
+  if (!character) return { summary: null, chronicle: [], openObligations: [] };
   const { rows } = await deps.pool.query<{ id: string; intention: 'embrace' | 'redeem' | null }>(
     'SELECT id, intention FROM ownership_epochs WHERE id = $1',
     [character.active_epoch_id],
@@ -87,6 +92,17 @@ async function readGame(deps: ReadDeps, identity: Identity): Promise<{ summary: 
   );
   const stats = { trust: character.trust, notoriety: character.notoriety, supplies: character.supplies };
   const controller = await readController(deps, character.active_epoch_id);
+  const openObligations: ConsequenceState[] = await deps.pool.query<{ kind: string; status: string; opened_sequence: number; origin_template_id: number | null; origin_choice_id: string | null }>(
+    `SELECT kind, status, opened_sequence, origin_template_id, origin_choice_id
+     FROM story_consequences WHERE character_id = $1 AND status = 'open' ORDER BY opened_sequence`,
+    [character.id],
+  ).then(r => r.rows.map(o => ({
+    kind: o.kind as ConsequenceState['kind'],
+    status: o.status as ConsequenceState['status'],
+    openedSequence: o.opened_sequence,
+    originTemplateId: o.origin_template_id,
+    originChoiceId: o.origin_choice_id,
+  })));
   const summary: ApiGameSummary = {
     characterId: character.id,
     stats,
@@ -112,6 +128,7 @@ async function readGame(deps: ReadDeps, identity: Identity): Promise<{ summary: 
   return {
     summary,
     chronicle: events.map(mapGameEvent),
+    openObligations,
   };
 }
 
@@ -256,6 +273,7 @@ export async function readProfile(deps: ReadDeps, identity: Identity): Promise<A
     metadata,
     game: game.summary,
     chronicle: game.chronicle,
+    openObligations: game.openObligations,
     provenance,
     historySync,
   };

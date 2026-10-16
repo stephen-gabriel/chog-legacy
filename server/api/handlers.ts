@@ -383,7 +383,9 @@ export async function handleApi(deps: ApiDeps, req: ApiRequest): Promise<ApiResp
         nextResetUtc: state.nextResetUtc,
         intention: state.intention,
         epochId: state.epochId,
-        encounter: enc ? buildEncounterView(enc.templateId, enc.instanceId, state.stats) : null,
+        encounter: enc ? buildEncounterView(enc.templateId, enc.instanceId, state.stats, enc.story, deps.now().toISOString().slice(0, 10)) : null,
+        openObligations: state.openObligations,
+        allConsequences: state.allConsequences,
       };
     });
     return { status: 200, json };

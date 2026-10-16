@@ -36,6 +36,34 @@ Work on `ui-rebirth-milkwood` after integrating the Milkwood UI (`574fb1e`). Two
 ### Known limitation
 - **IPFS gateway throttling:** of the four public gateways only `gateway.pinata.cloud` reliably responds; `dweb.link`, `w3s.link` and `ipfs.io` return **HTTP 429** from this machine. The multi-gateway retry plus the cache-with-preserve path make this safe (ownership and any previously fetched metadata are never lost, and a later successful fetch fills the row), but **a token whose metadata has never been cached can still come back with `metadata: null` until a gateway allows the request**. Chain facts (owner, block, tokenURI) are unaffected. Mitigations if this persists: pin the token URIs to a dedicated gateway, self-host an IPFS gateway, or move metadata retrieval off the request path. This is environment/throttling, not an application defect.
 
+## Story arc: the courier's debt — 16 October 2026
+
+Implementation complete for the courier-debt milestone on `ui-rebirth-milkwood`. Rules stay on `legacy-v1` (`COURIER_TEMPLATE_ID = 0`). Day 0 offers the stranded-courier choice (`share` opens `courier_trust`, `reward` opens `tax_grudge`, `pass` is neutral). The next UTC day is a courier-only recall (`settle_tax` / `take_waystone` open `waystone_promise`; `refuse_courier` / `deny_debt` close cleanly). `waystone_promise` then exposes `carry` / `hand_back` / `sell`. Every branch closes; the current owner is the only legal resolver; incoming owner gets `NOT_CURRENT_OWNER`; retries stay idempotent; existing characters get no fabricated obligations.
+
+Shared rules (`src/shared/rules/story.ts` + `buildEncounterView`) now take an explicit `today` so recall/waystone readiness is deterministic and testable. Both the in-memory practice service and the Postgres service persist/open/close consequences, expose open obligations on profile and play, and return `consequence` / `obligationClosed` on receipts. Migration `0002_story_consequences.sql` is non-destructive and applied.
+
+### Acceptance verification — 17 October 2026
+
+**Test gates**
+- `npm run typecheck` — clean
+- `npm test` — **144/144** (in-memory courier-arc suite: open trust → next-day recall → settle into waystone → carry fulfilment → `openObligations` empty afterwards)
+- `npm run test:db` — **52/52** — coverage closed for the four DB risks:
+  - *restart persistence*: `tests/db/service.test.ts` "persists an open waystone obligation across service restart" — commits `settle_tax` (open `waystone_promise`), ends the pool, reconnects a fresh pool on the same test database and asserts the obligation is still open with `originChoiceId = 'settle_tax'`, then resolves with `carry` → `fulfilled`
+  - *outgoing-owner rejection*: `tests/db/transfer-flow.test.ts` "A is rejected with `NOT_CURRENT_OWNER` for every mutation after the transfer" (profile read, action, intention) + in-memory `tests/service.test.ts`
+  - *idempotency*: `tests/db/service.test.ts` "idempotent retry returns the stored receipt without reapplying state" and "parallel duplicate submits with one idempotency key apply exactly once"
+  - *migration safety*: `tests/db/service.test.ts` "migrates an existing character without fabricating obligations" — activates a character, asserts `openObligations` and `allConsequences` are empty, asserts `0002_story_consequences.sql` is recorded in `schema_migrations`, and asserts zero rows in `story_consequences` for that character
+- `npm run build` — clean
+
+**Browser acceptance — 29/29 PASS** (`evidence/browser/arc-verify-results.json` + `arc-*.png`)
+- Tooling: `playwright-core` driving system Microsoft Edge (headless, `channel: msedge`) against the production bundle + Docker `chog_dev` on `http://127.0.0.1:8420`.
+- **Isolated test clock — no system clock change.** `practiceClock` in `src/server/service.ts` reads `sessionStorage['chog-legacy:practice:clock']` when present and otherwise falls through to `systemClock`; `usePractice` now builds `GameService` from `practiceClock` instead of `systemClock`. The harness sets that key per day (2026-10-23 → 2026-10-24 → 2026-10-25; 2026-10-23 is the first October date whose deterministic template order puts the courier in slot 0 for the practice identity).
+- Full arc asserted end-to-end: `A stranded courier` → `Share supplies` → outcome copy "An unfinished promise now rides with the Chog." → journal card `Unfinished obligations` / `1 open promise` / `Courier trust from earlier` / `Began in “A stranded courier”` / `Share supplies` → `Simulate controller change` → inheritance "What carries forward" carries `Courier trust from earlier · From “A stranded courier”` → day-2 recall `The courier returns` → `Settle the tax from your own pack` → day-3 `The waystone promise` → `Carry the waystone to the wayhouse` → outcome "The obligation is settled." → journal obligations section gone → reload preserves the resolved state. Desktop 1440×900 and mobile 390×844 both pass; 0 px horizontal overflow; zero console/page errors.
+- **FRD gap found and fixed during this pass:** the journal and inheritance summary listed open obligations without their originating chapter (FRD §122 requires both). `src/ui/components.tsx` now derives the originating chapter and choice from the consequence's `originChoiceId`/`originTemplateId` and renders them in the `Unfinished obligations` card and the inheritance "What carries forward" list.
+- Harness note: an `addInitScript` that cleared `localStorage` re-ran on every navigation and silently wiped the practice save between steps; the harness now clears storage once via `page.evaluate` before the first load.
+
+**Server / deploy posture**
+- Detached local server left running on `http://127.0.0.1:8420` (pid 9024, health `{"ok":true,"db":true,"chain":{...},"contractName":"Chog Genesis","chainId":143}`). No push, no deploy. Real-holder walkthrough still pending (`REAL_HOLDER_CHECK.md`).
+
 ---
 
 Version 4.0 · Updated 16 October 2026 · Session 4 of ~8 (deployment readiness + browser verification)
