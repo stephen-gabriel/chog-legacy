@@ -44,6 +44,7 @@ function testConfig(overrides: Partial<Config> = {}): Config {
     trustProxy: false,
     dbSsl: false,
     staticDir: 'dist',
+    production: false,
     ...overrides,
   };
 }

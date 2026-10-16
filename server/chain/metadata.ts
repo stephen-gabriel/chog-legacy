@@ -62,22 +62,30 @@ function extract(json: unknown): Omit<MetadataResult, 'ok' | 'error'> {
 
 export async function resolveMetadata(
   tokenUri: string | null,
-  opts?: { timeoutMs?: number; gateways?: string[]; fetchImpl?: typeof fetchJson },
+  opts?: { timeoutMs?: number; gateways?: string[]; fetchImpl?: typeof fetchJson; cycles?: number; retryDelayMs?: number },
 ): Promise<MetadataResult> {
   if (!tokenUri) return { ok: false, name: null, imageUri: null, traits: null, error: 'no token uri' };
   const timeoutMs = opts?.timeoutMs ?? 8000;
   const gateways = opts?.gateways ?? IPFS_GATEWAYS;
   const doFetch = opts?.fetchImpl ?? fetchJson;
+  const cycles = Math.max(1, opts?.cycles ?? 2);
+  const retryDelayMs = opts?.retryDelayMs ?? 250;
 
   if (tokenUri.startsWith('ipfs://')) {
     const errors: string[] = [];
-    for (const gw of gateways) {
-      const r = await doFetch(gw + tokenUri.slice(7), timeoutMs);
-      if (r.ok) {
-        const meta = extract(r.json);
-        return { ok: true, error: null, ...meta };
+    const path = tokenUri.slice(7);
+    for (let cycle = 0; cycle < cycles; cycle++) {
+      if (cycle > 0 && retryDelayMs > 0) {
+        await new Promise(r => setTimeout(r, retryDelayMs * cycle));
       }
-      errors.push(`${gw.replace(/\/$/, '')}: ${r.error}`);
+      for (const gw of gateways) {
+        const r = await doFetch(gw + path, timeoutMs);
+        if (r.ok) {
+          const meta = extract(r.json);
+          return { ok: true, error: null, ...meta };
+        }
+        errors.push(`${gw.replace(/\/$/, '')}: ${r.error}`);
+      }
     }
     return { ok: false, name: null, imageUri: null, traits: null, error: errors.join('; ') };
   }

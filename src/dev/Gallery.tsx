@@ -36,7 +36,7 @@ export default function Gallery() {
     case 'Wallet states': body = <main className={s.page}><label>State <select value={viewer} onChange={e => setViewer(e.target.value as Viewer)}>
       {(['visitor', 'connected', 'awaiting', 'cancelled', 'owner', 'non-owner', 'expired', 'unsupported', 'switched'] as Viewer[]).map(v => <option key={v}>{v}</option>)}</select></label>
       <C.SessionBar v={viewer} h={h} address="0x12…34ab (fixture)" /></main>; break;
-    case 'Errors': body = <main className={s.page}>{(['INVALID_INPUT', 'SIGN_IN_REQUIRED', 'NOT_CURRENT_OWNER', 'STATE_CHANGED', 'CHOICE_UNAVAILABLE', 'DAILY_LIMIT', 'RATE_LIMITED', 'CHAIN_UNAVAILABLE', 'STORAGE_UNAVAILABLE'] as ErrorCode[]).map(c => <C.ErrorNotice key={c} code={c} />)}</main>; break;
+    case 'Errors': body = <main className={s.page}>{(['INVALID_INPUT', 'ORIGIN_DENIED', 'SIGN_IN_REQUIRED', 'NOT_CURRENT_OWNER', 'STATE_CHANGED', 'CHOICE_UNAVAILABLE', 'DAILY_LIMIT', 'RATE_LIMITED', 'CHAIN_UNAVAILABLE', 'STORAGE_UNAVAILABLE'] as ErrorCode[]).map(c => <C.ErrorNotice key={c} code={c} />)}</main>; break;
   }
   return (<div>
     <nav className={s.gallery} aria-label="Fixture gallery (dev only)"><b>Fixture gallery (dev only)</b>

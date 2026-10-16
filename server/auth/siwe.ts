@@ -29,7 +29,7 @@ export async function issueNonce(
     throw new AppError('INVALID_INPUT', 'wallet must be a 0x address');
   }
   const uri = opts.uri ?? config.appOrigin;
-  if (!isAllowedAppOrigin(uri, config.appOrigin)) {
+  if (!isAllowedAppOrigin(uri, config.appOrigin, { allowLocalhost: !config.production })) {
     throw new AppError('INVALID_INPUT', 'uri must be this application origin');
   }
   const domain = new URL(uri).host;
@@ -72,7 +72,10 @@ export async function verifySignIn(
   if (parsed.chainId !== config.mainnetChainId) {
     throw new AppError('SIGN_IN_REQUIRED', 'Sign-in message is bound to the wrong chain');
   }
-  if (!isAllowedAppOrigin(parsed.uri, config.appOrigin) || new URL(parsed.uri).host !== parsed.domain) {
+  if (
+    !isAllowedAppOrigin(parsed.uri, config.appOrigin, { allowLocalhost: !config.production }) ||
+    new URL(parsed.uri).host !== parsed.domain
+  ) {
     throw new AppError('SIGN_IN_REQUIRED', 'Sign-in message domain or uri is not this application');
   }
   if (parsed.expirationTime && now.getTime() > Date.parse(parsed.expirationTime)) {

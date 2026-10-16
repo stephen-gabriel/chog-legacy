@@ -99,6 +99,14 @@ describe('origin allowlisting', () => {
     expect(isAllowedAppOrigin('nonsense', 'http://localhost:5173')).toBe(false);
   });
 
+  it('restricts localhost allowances to development when allowLocalhost is false', () => {
+    expect(isAllowedAppOrigin('http://localhost:9999', 'https://chog.example', { allowLocalhost: false })).toBe(false);
+    expect(isAllowedAppOrigin('http://localhost:5173', 'https://chog.example', { allowLocalhost: false })).toBe(false);
+    expect(isAllowedAppOrigin('https://chog.example', 'https://chog.example', { allowLocalhost: false })).toBe(true);
+    expect(isAllowedAppOrigin('http://127.0.0.1:8420', 'http://127.0.0.1:8420', { allowLocalhost: false })).toBe(true);
+    expect(isAllowedAppOrigin('https://evil.example', 'https://chog.example', { allowLocalhost: false })).toBe(false);
+  });
+
   it('canonicalOrigin falls back to empty string', () => {
     expect(canonicalOrigin('https://a.example/x')).toBe('https://a.example');
     expect(canonicalOrigin('nope')).toBe('');

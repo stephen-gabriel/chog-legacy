@@ -8,9 +8,22 @@ import type { Entry, Profile } from "@/ui/types";
 
 const GATEWAY = "https://gateway.pinata.cloud/ipfs/";
 
+export const IPFS_HTTP_GATEWAYS = [
+  "https://gateway.pinata.cloud/ipfs/",
+  "https://dweb.link/ipfs/",
+  "https://w3s.link/ipfs/",
+  "https://ipfs.io/ipfs/",
+];
+
 export function ipfsHttp(uri: string | null | undefined): string | undefined {
   if (!uri) return undefined;
   return uri.startsWith("ipfs://") ? GATEWAY + uri.slice(7) : uri;
+}
+
+export function ipfsHttpAll(uri: string | null | undefined): string[] {
+  if (!uri) return [];
+  if (!uri.startsWith("ipfs://")) return [uri];
+  return IPFS_HTTP_GATEWAYS.map((g) => g + uri.slice(7));
 }
 
 export function shortAddress(addr: string): string {

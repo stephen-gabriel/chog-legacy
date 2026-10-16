@@ -53,6 +53,7 @@ function testConfig(): Config {
     trustProxy: false,
     dbSsl: false,
     staticDir: 'dist',
+    production: false,
   };
 }
 

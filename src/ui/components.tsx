@@ -103,6 +103,10 @@ const MSG: Record<ErrorCode, [string, string]> = {
     "We couldn’t confirm this save.",
     "Retry to check the result. The same request cannot spend an action twice.",
   ],
+  ORIGIN_DENIED: [
+    "This request was blocked for security.",
+    "Open the app from its own address — the server only accepts writes from its configured app origin.",
+  ],
 };
 export function ErrorNotice({
   code,
@@ -222,16 +226,25 @@ export function Ledger({ st, after }: { st: Stats; after?: Stats }) {
 }
 export function Portrait({
   url,
+  fallbackUrls,
   name,
   practice = false,
 }: {
   url?: string;
+  fallbackUrls?: string[];
   name: string;
   practice?: boolean;
 }) {
   const [bad, setBad] = useState(false);
-  useEffect(() => setBad(false), [url, practice]);
-  const src = practice ? art : url;
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    setBad(false);
+    setIdx(0);
+  }, [url, practice, fallbackUrls]);
+  const candidates = practice
+    ? [art as string]
+    : [url, ...(fallbackUrls ?? [])].filter((u): u is string => !!u);
+  const src = candidates[idx];
   return src && !bad ? (
     <img
       className={s.portrait}
@@ -241,7 +254,10 @@ export function Portrait({
           ? "Ashen, an illustrated fictional practice character with a lantern and map"
           : name
       }
-      onError={() => setBad(true)}
+      onError={() => {
+        if (idx + 1 < candidates.length) setIdx(idx + 1);
+        else setBad(true);
+      }}
     />
   ) : (
     <div

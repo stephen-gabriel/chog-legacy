@@ -186,17 +186,31 @@ async function readHistorySync(deps: ReadDeps, identity: Identity): Promise<ApiH
   };
 }
 
-async function readMetadata(deps: ReadDeps, identity: Identity): Promise<ApiMetadata | null> {
+interface MetadataCacheRow {
+  token_uri: string | null;
+  name: string | null;
+  image_uri: string | null;
+  traits: ApiTraitRow[] | null;
+  error: string | null;
+  retrieved_at: Date;
+}
+
+async function readMetadataRow(deps: ReadDeps, identity: Identity): Promise<MetadataCacheRow | null> {
   requireChainKeys(identity);
   const [ns, chainId, contract, tokenId] = keyParams(identity);
-  const { rows } = await deps.pool.query<{
-    token_uri: string | null; name: string | null; image_uri: string | null;
-    traits: ApiTraitRow[] | null; error: string | null; retrieved_at: Date;
-  }>('SELECT token_uri, name, image_uri, traits, error, retrieved_at FROM metadata_cache WHERE namespace = $1 AND chain_id = $2 AND contract = $3 AND token_id = $4', [
-    ns, chainId, contract, tokenId,
-  ]);
-  if (rows.length === 0) return null;
-  const r = rows[0];
+  const { rows } = await deps.pool.query<MetadataCacheRow>(
+    'SELECT token_uri, name, image_uri, traits, error, retrieved_at FROM metadata_cache WHERE namespace = $1 AND chain_id = $2 AND contract = $3 AND token_id = $4',
+    [ns, chainId, contract, tokenId],
+  );
+  return rows[0] ?? null;
+}
+
+async function readMetadata(deps: ReadDeps, identity: Identity): Promise<ApiMetadata | null> {
+  const r = await readMetadataRow(deps, identity).catch(e => {
+    if (e instanceof AppError && e.code === 'INVALID_INPUT') return null;
+    throw e;
+  });
+  if (!r) return null;
   const ageMs = deps.now().getTime() - new Date(r.retrieved_at).getTime();
   return {
     tokenUri: r.token_uri,
@@ -322,7 +336,13 @@ async function syncHistoryPage(deps: ReadDeps, identity: Identity, latestBlock: 
   );
 }
 
-export async function refreshProfile(deps: ReadDeps, identity: Identity): Promise<ApiProfile> {
+export interface RefreshOptions {
+  metadataTimeoutMs?: number;
+  metadataCycles?: number;
+  syncHistory?: boolean;
+}
+
+export async function refreshProfile(deps: ReadDeps, identity: Identity, opts?: RefreshOptions): Promise<ApiProfile> {
   requireChainKeys(identity);
   const health = await deps.chain.getHealth();
   if (!health.ok || health.blockNumber === null) {
@@ -347,19 +367,43 @@ export async function refreshProfile(deps: ReadDeps, identity: Identity): Promis
 
   try {
     const tokenUri = await deps.chain.tokenURI(identity.tokenId);
-    const meta = await resolveMetadata(tokenUri, { timeoutMs: 8000 });
-    await upsertMetadata(
-      deps.pool, identity, tokenUri,
-      meta.name, meta.imageUri, meta.traits, meta.ok ? null : meta.error, now,
-    );
+    const meta = await resolveMetadata(tokenUri, {
+      timeoutMs: opts?.metadataTimeoutMs ?? 8000,
+      cycles: opts?.metadataCycles ?? 2,
+    });
+    if (meta.ok) {
+      await upsertMetadata(
+        deps.pool, identity, tokenUri,
+        meta.name, meta.imageUri, meta.traits, null, now,
+      );
+    } else {
+      const prev = await readMetadataRow(deps, identity);
+      await upsertMetadata(
+        deps.pool, identity,
+        tokenUri ?? prev?.token_uri ?? null,
+        prev?.name ?? null,
+        prev?.image_uri ?? null,
+        prev?.traits ?? null,
+        meta.error,
+        now,
+      );
+    }
   } catch (e) {
+    const prev = await readMetadataRow(deps, identity);
     await upsertMetadata(
-      deps.pool, identity, null, null, null, null,
-      e instanceof Error ? e.message : String(e), now,
+      deps.pool, identity,
+      prev?.token_uri ?? null,
+      prev?.name ?? null,
+      prev?.image_uri ?? null,
+      prev?.traits ?? null,
+      e instanceof Error ? e.message : String(e),
+      now,
     );
   }
 
-  await syncHistoryPage(deps, identity, health.blockNumber);
+  if (opts?.syncHistory !== false) {
+    await syncHistoryPage(deps, identity, health.blockNumber);
+  }
   return readProfile(deps, identity);
 }
 

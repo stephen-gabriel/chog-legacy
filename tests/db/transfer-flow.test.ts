@@ -52,6 +52,7 @@ const CONFIG: Config = {
   trustProxy: false,
   dbSsl: false,
   staticDir: 'dist',
+  production: false,
 };
 
 /* ---------------- minimal RLP ---------------- */

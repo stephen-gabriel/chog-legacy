@@ -109,9 +109,14 @@ export function canonicalOrigin(raw: string): string {
   }
 }
 
-export function isAllowedAppOrigin(raw: string, appOrigin: string): boolean {
+export function isAllowedAppOrigin(
+  raw: string,
+  appOrigin: string,
+  opts?: { allowLocalhost?: boolean },
+): boolean {
   const origin = canonicalOrigin(raw);
   if (!origin) return false;
   if (origin === canonicalOrigin(appOrigin)) return true;
+  if (opts?.allowLocalhost === false) return false;
   return /^http:\/\/localhost(:\d+)?$/.test(origin);
 }

@@ -61,6 +61,7 @@ export const STATUS_BY_ERROR: Record<ErrorCode, number> = {
   RATE_LIMITED: 429,
   CHAIN_UNAVAILABLE: 503,
   STORAGE_UNAVAILABLE: 503,
+  ORIGIN_DENIED: 403,
 };
 
 const AUTH_WINDOW_MS = 5_000;
@@ -110,15 +111,26 @@ function pinnedIdentity(deps: ApiDeps, tokenId: string): Identity {
 
 function requireOrigin(deps: ApiDeps, req: ApiRequest): void {
   const origin = req.headers.get('origin');
-  if (!origin || !isAllowedAppOrigin(origin, deps.config.appOrigin)) {
-    throw new AppError('INVALID_INPUT', 'Missing or disallowed Origin header for this write');
+  const allowed = origin && isAllowedAppOrigin(origin, deps.config.appOrigin, {
+    allowLocalhost: !deps.config.production,
+  });
+  if (!allowed) {
+    throw new AppError(
+      'ORIGIN_DENIED',
+      `This write must come from the app origin (${deps.config.appOrigin}). Missing or disallowed Origin header.`,
+    );
   }
 }
 
 function allowOriginIfPresent(deps: ApiDeps, req: ApiRequest): void {
   const origin = req.headers.get('origin');
-  if (origin && !isAllowedAppOrigin(origin, deps.config.appOrigin)) {
-    throw new AppError('INVALID_INPUT', 'Disallowed Origin header for this write');
+  if (origin && !isAllowedAppOrigin(origin, deps.config.appOrigin, {
+    allowLocalhost: !deps.config.production,
+  })) {
+    throw new AppError(
+      'ORIGIN_DENIED',
+      `This write must come from the app origin (${deps.config.appOrigin}). The request Origin is not allowed.`,
+    );
   }
 }
 
@@ -286,7 +298,19 @@ export async function handleApi(deps: ApiDeps, req: ApiRequest): Promise<ApiResp
 
   if (method === 'GET' && path === '/api/profile') {
     const identity = parseIdentity(deps, query);
-    return { status: 200, json: await readProfile(deps, identity) };
+    let profile = await readProfile(deps, identity);
+    if (profile.metadata === null) {
+      try {
+        profile = await refreshProfile(deps, identity, {
+          metadataTimeoutMs: 5_000,
+          metadataCycles: 1,
+          syncHistory: false,
+        });
+      } catch {
+        profile = await readProfile(deps, identity);
+      }
+    }
+    return { status: 200, json: profile };
   }
 
   if (method === 'POST' && path === '/api/profile/refresh') {

@@ -8,7 +8,7 @@ import { useAuth } from "@/auth/AuthContext";
 import { sessionHandlers } from "@/auth/sessionHandlers";
 import { formatResetLocal } from "@/app/format";
 import { lookupRealToken, refreshRealToken } from "./realApi";
-import { apiProfileToUi, ipfsHttp, shortAddress } from "./realMapping";
+import { apiProfileToUi, ipfsHttp, ipfsHttpAll, shortAddress } from "./realMapping";
 import { useRealGame } from "./useRealGame";
 
 type State =
@@ -250,6 +250,7 @@ function ReadyProfile({
           <div className={s.characterArt}>
             <C.Portrait
               url={ipfsHttp(p.metadata?.imageUri)}
+              fallbackUrls={ipfsHttpAll(p.metadata?.imageUri).slice(1)}
               name={p.metadata?.name ?? `Chog #${tokenId}`}
             />
             <span className={s.characterBadge}>Token #{tokenId} · Monad</span>

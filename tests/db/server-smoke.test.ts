@@ -41,7 +41,11 @@ function startRpcStub(): Promise<{ server: Server; url: string }> {
           const data = (body.params[0] as { data?: string }).data ?? '0x';
           if (data.startsWith('0x06fdde03')) return send(encodeAbiString('Chog Smoke'));
           if (data.startsWith('0x6352211e')) return send(`0x${WALLET.slice(2).padStart(64, '0')}`);
-          if (data.startsWith('0xc87b56dd')) return send(encodeAbiString(TOKEN_URI));
+          if (data.startsWith('0xc87b56dd')) {
+            const id = BigInt('0x' + data.slice(10)).toString();
+            if (id === '888') return send(encodeAbiString('ftp://bad.example/888.json'));
+            return send(encodeAbiString(TOKEN_URI));
+          }
           return send(undefined, { code: 3, message: 'execution reverted: unknown selector' });
         }
         case 'eth_getLogs':
@@ -222,5 +226,45 @@ describe.runIf(gate.ok)('HTTP server smoke test on an ephemeral port (real datab
     const afterLogout = await call('POST', '/api/play', { tokenId: '5' }, { origin: ORIGIN, cookie });
     expect(afterLogout.status).toBe(401);
     expect((afterLogout.json.error as { code: string }).code).toBe('SIGN_IN_REQUIRED');
+  });
+
+  it('rejects refresh from a foreign Origin with ORIGIN_DENIED and keeps the read path open', async () => {
+    const denied = await call('POST', '/api/profile/refresh', { tokenId: '5' }, { origin: 'https://evil.example' });
+    expect(denied.status).toBe(403);
+    expect((denied.json.error as { code: string }).code).toBe('ORIGIN_DENIED');
+    expect((denied.json.error as { message: string }).message).toContain('app origin');
+
+    const loopback = await call('POST', '/api/profile/refresh', { tokenId: '5' }, { origin: 'http://127.0.0.1:9' });
+    expect(loopback.status).toBe(403);
+    expect((loopback.json.error as { code: string }).code).toBe('ORIGIN_DENIED');
+
+    const read = await call('GET', '/api/profile?tokenId=5');
+    expect(read.status).toBe(200);
+  });
+
+  it('first-time lookup of an uncached token fetches ownership and metadata without a POST', async () => {
+    const res = await call('GET', '/api/profile?tokenId=777');
+    expect(res.status).toBe(200);
+    const profile = res.json as {
+      ownership: { owner: string | null; status: string };
+      metadata: { name: string | null; error: string | null } | null;
+    };
+    expect(profile.ownership.owner?.toLowerCase()).toBe(WALLET);
+    expect(profile.ownership.status).toBe('fresh');
+    expect(profile.metadata?.name).toBe('CHOG #5');
+    expect(profile.metadata?.error).toBeNull();
+  });
+
+  it('first-time lookup keeps ownership results when metadata resolution fails', async () => {
+    const res = await call('GET', '/api/profile?tokenId=888');
+    expect(res.status).toBe(200);
+    const profile = res.json as {
+      ownership: { owner: string | null };
+      metadata: { name: string | null; error: string | null } | null;
+    };
+    expect(profile.ownership.owner?.toLowerCase()).toBe(WALLET);
+    expect(profile.metadata).not.toBeNull();
+    expect(profile.metadata!.name).toBeNull();
+    expect(profile.metadata!.error).toContain('unsupported');
   });
 });

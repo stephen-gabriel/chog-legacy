@@ -23,6 +23,7 @@ const CONFIG_FIELDS = {
   trustProxy: false,
   dbSsl: false,
   staticDir: 'dist',
+  production: false,
 } as const;
 
 interface Route {
@@ -120,14 +121,14 @@ describe('API authorization gate (session first, then origin)', () => {
       expect(await codeOfCall(post(path, body))).toBe('SIGN_IN_REQUIRED');
     });
 
-    it(`POST ${path} with a session but no Origin is rejected as INVALID_INPUT before any chain read`, async () => {
+    it(`POST ${path} with a session but no Origin is rejected as ORIGIN_DENIED before any chain read`, async () => {
       const req = post(path, body, { cookies: { chog_session: 'tok' } });
-      expect(await codeOfCall(req, deadDeps(routedPool([VALID_SESSION])))).toBe('INVALID_INPUT');
+      expect(await codeOfCall(req, deadDeps(routedPool([VALID_SESSION])))).toBe('ORIGIN_DENIED');
     });
 
-    it(`POST ${path} with a session and a disallowed Origin is rejected as INVALID_INPUT`, async () => {
+    it(`POST ${path} with a session and a disallowed Origin is rejected as ORIGIN_DENIED`, async () => {
       const req = post(path, body, { origin: 'https://evil.example', cookies: { chog_session: 'tok' } });
-      expect(await codeOfCall(req, deadDeps(routedPool([VALID_SESSION])))).toBe('INVALID_INPUT');
+      expect(await codeOfCall(req, deadDeps(routedPool([VALID_SESSION])))).toBe('ORIGIN_DENIED');
     });
 
     it(`POST ${path} with a session and an allowed Origin reaches the chain check`, async () => {
@@ -135,6 +136,22 @@ describe('API authorization gate (session first, then origin)', () => {
       expect(await codeOfCall(req, liveChainDeps(routedPool([VALID_SESSION])))).toBe('CHAIN_UNAVAILABLE');
     });
   }
+
+  it('in production mode a localhost Origin is rejected and only the configured APP_ORIGIN is accepted', async () => {
+    const prodConfig = { ...CONFIG_FIELDS, production: true, appOrigin: 'https://chog.example' };
+    const deps: ApiDeps = {
+      ...liveChainDeps(routedPool([VALID_SESSION])),
+      config: { ...prodConfig },
+    };
+    const localhostReq = post('/api/play', { tokenId: '1425' }, { origin: 'http://localhost:3000', cookies: { chog_session: 'tok' } });
+    expect(await codeOfCall(localhostReq, deps)).toBe('ORIGIN_DENIED');
+    const loopbackReq = post('/api/play', { tokenId: '1425' }, { origin: 'http://127.0.0.1:8420', cookies: { chog_session: 'tok' } });
+    expect(await codeOfCall(loopbackReq, deps)).toBe('ORIGIN_DENIED');
+    const evilReq = post('/api/play', { tokenId: '1425' }, { origin: 'https://evil.example', cookies: { chog_session: 'tok' } });
+    expect(await codeOfCall(evilReq, deps)).toBe('ORIGIN_DENIED');
+    const okReq = post('/api/play', { tokenId: '1425' }, { origin: 'https://chog.example', cookies: { chog_session: 'tok' } });
+    expect(await codeOfCall(okReq, deps)).toBe('CHAIN_UNAVAILABLE');
+  });
 
   it('treats an expired or unknown session token as SIGN_IN_REQUIRED', async () => {
     const req = post('/api/play', { tokenId: '1425' }, { origin: 'http://localhost:5173', cookies: { chog_session: 'tok' } });
@@ -193,6 +210,7 @@ describe('API authorization gate (session first, then origin)', () => {
       RATE_LIMITED: 429,
       CHAIN_UNAVAILABLE: 503,
       STORAGE_UNAVAILABLE: 503,
+      ORIGIN_DENIED: 403,
     };
     expect(STATUS_BY_ERROR).toEqual(expected);
   });
@@ -226,12 +244,12 @@ describe('API authorization gate (session first, then origin)', () => {
 
 describe('auth endpoints', () => {
   it('rejects POST /api/auth/nonce without an Origin before touching storage', async () => {
-    expect(await codeOfCall(post('/api/auth/nonce', { wallet: '0x601634f3d0746b550e68439286c1ad022a5f2b88' }))).toBe('INVALID_INPUT');
+    expect(await codeOfCall(post('/api/auth/nonce', { wallet: '0x601634f3d0746b550e68439286c1ad022a5f2b88' }))).toBe('ORIGIN_DENIED');
   });
 
   it('rejects POST /api/auth/verify with a disallowed Origin before touching storage', async () => {
     const req = post('/api/auth/verify', { message: 'x', signature: '0xzz' }, { origin: 'https://evil.example' });
-    expect(await codeOfCall(req)).toBe('INVALID_INPUT');
+    expect(await codeOfCall(req)).toBe('ORIGIN_DENIED');
   });
 
   it('issues an EIP-4361 message bound to app domain, wallet, chain and nonce', async () => {
@@ -297,7 +315,7 @@ describe('auth endpoints', () => {
     const noOrigin = post('/api/profile/refresh', body);
     expect(await codeOfCall(noOrigin, deadDeps())).toBe('NOT_APP_ERROR:Error: storage/chain must not be reached when auth fails first');
     const evil = post('/api/profile/refresh', body, { origin: 'https://evil.example' });
-    expect(await codeOfCall(evil, deadDeps())).toBe('INVALID_INPUT');
+    expect(await codeOfCall(evil, deadDeps())).toBe('ORIGIN_DENIED');
   });
 });
 

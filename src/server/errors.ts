@@ -8,7 +8,8 @@ export type ErrorCode =
   | 'DAILY_LIMIT'
   | 'RATE_LIMITED'
   | 'CHAIN_UNAVAILABLE'
-  | 'STORAGE_UNAVAILABLE';
+  | 'STORAGE_UNAVAILABLE'
+  | 'ORIGIN_DENIED';
 
 export class AppError extends Error {
   readonly code: ErrorCode;

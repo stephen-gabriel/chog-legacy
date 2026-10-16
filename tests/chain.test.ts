@@ -101,6 +101,37 @@ describe('metadata resolution', () => {
     expect(result.error).toContain('https://two: timeout');
   });
 
+  it('recovers within the bounded retry cycle when a gateway recovers', async () => {
+    let calls = 0;
+    const result = await resolveMetadata('ipfs://bafy/1.json', {
+      gateways: ['https://one/'],
+      retryDelayMs: 0,
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls < 2) return { ok: false, error: 'HTTP 429' };
+        return { ok: true, json: { name: 'Recovered Chog' } };
+      },
+    });
+    expect(calls).toBe(2);
+    expect(result.ok).toBe(true);
+    expect(result.name).toBe('Recovered Chog');
+  });
+
+  it('stops after the bounded number of gateway cycles', async () => {
+    let calls = 0;
+    const result = await resolveMetadata('ipfs://bafy/1.json', {
+      gateways: ['https://one/'],
+      cycles: 2,
+      retryDelayMs: 0,
+      fetchImpl: async () => {
+        calls += 1;
+        return { ok: false, error: 'HTTP 429' };
+      },
+    });
+    expect(calls).toBe(2);
+    expect(result.ok).toBe(false);
+  });
+
   it('parses data-URI metadata without a network hop', async () => {
     const json = JSON.stringify({ name: 'Data Chog', image: 'data:image/png;base64,AAAA' });
     const uri = 'data:application/json;base64,' + Buffer.from(json).toString('base64');

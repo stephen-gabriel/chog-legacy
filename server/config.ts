@@ -38,6 +38,7 @@ export interface Config {
   trustProxy: boolean;
   dbSsl: boolean;
   staticDir: string;
+  production: boolean;
 }
 
 let generatedSessionSecret: string | null = null;
@@ -103,5 +104,6 @@ export function loadConfig(overrides?: Record<string, string | undefined>): Conf
     trustProxy: truthy(env('TRUST_PROXY')),
     dbSsl: truthy(env('DB_SSL')),
     staticDir: env('STATIC_DIR') ?? 'dist',
+    production: (env('NODE_ENV') ?? '').toLowerCase() === 'production',
   };
 }

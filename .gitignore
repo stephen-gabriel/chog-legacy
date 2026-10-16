@@ -8,3 +8,5 @@ dist-server/
 .env.*
 !.env.example
 !.env.production.example
+/ui-rebirth/PREVIEW.html
+/server-run.out

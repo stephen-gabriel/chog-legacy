@@ -12,6 +12,30 @@ This export did not contain root server/, db/, tests/ or the project's root buil
 
 Next: integrate the UI handoff into the current full project, retain newer local changes, run its typecheck/unit/DB/build/browser gates and inspect the resulting UI. Keep the real-holder saved-choice gate explicit. Connected story consequences and inherited unfinished obligations remain separate pending gameplay work.
 
+## Origin hardening + real-profile reliability — 16 October 2026
+
+Work on `ui-rebirth-milkwood` after integrating the Milkwood UI (`574fb1e`). Two fixes on top of the UI integration, checkpointed locally as `fix: harden origins and improve real profile loading`. No push or deploy; the local detached server was left running.
+
+### Origin / CSRF hardening
+- New error code `ORIGIN_DENIED` (HTTP 403) replaces the previous generic `INVALID_INPUT` on disallowed writes, with a user-facing notice ("This request was blocked for security… open the app from its own address"). Mapped through the shared `ErrorCode` unions, `STATUS_BY_ERROR`, and the UI `MSG` map.
+- `Config.production` derives from `NODE_ENV === 'production'`. `isAllowedAppOrigin` grew an `allowLocalhost` option (default true, so behavior is unchanged unless opted out). Every enforcement site — `requireOrigin`, `allowOriginIfPresent`, both `server/auth/siwe.ts` origin checks, and the `main.ts` CORS headers — passes `{ allowLocalhost: !config.production }`.
+- Result: **development keeps localhost allowances** (any `localhost` port). **Production accepts only the configured `APP_ORIGIN`** and rejects `localhost` and `127.0.0.1` entirely. Verified in `tests/api-auth.test.ts` (prod-mode test: localhost → `ORIGIN_DENIED`, configured origin still reaches the chain check).
+
+### Real-profile loading
+- `GET /api/profile` performs a **bounded first-time metadata fetch** when the cache is missing: `metadataTimeoutMs: 5000`, `metadataCycles: 1`, `syncHistory: false`, falling back to the ownership-only read on error. History sync still only advances on `POST /api/profile/refresh`.
+- `resolveMetadata` retries across cycles (default 2, `retryDelayMs` 250, growing per cycle) across the pinned gateway list.
+- `refreshProfile` now **preserves prior name/image/traits** on a metadata failure instead of wiping the cached row (`readMetadataRow` helper); a failed fetch records the error but keeps previously observed data. Ownership is always written before metadata, so a metadata failure never costs ownership.
+- Client `Portrait` rotates through 4 IPFS gateway URLs (`ipfsHttpAll`) via an `onError` fallback chain instead of a single hard-coded gateway.
+
+### Verification
+- `npm run typecheck` — clean; `npm run build` (typecheck + vite + esbuild server) — clean.
+- `npm test` — **142/142** (was 140 before these changes; added origin-allowlist `allowLocalhost:false` cases, the production-mode origin test, and two gateway-retry metadata tests).
+- `npm run test:db` — **49/49** (added two first-time-lookup smoke tests against real Postgres + stub RPC: uncached-token success populates metadata with no POST; metadata-failure token still returns fresh ownership with `metadata.error` set).
+- Live check against the running server + live Monad RPC: token **100** (uncached in `chog_dev`) returned `owner=0x491db6f3…cba7`, `status=fresh` on a plain GET with no POST; ownership was preserved even though the metadata fetch hit the bounded path. Tokens **1047 / 476 / 1425** confirmed with correct names and owners (539 / 1937 / 917) and loading images in a headless browser earlier in the session. Localhost-origin refreshes still return 200; foreign and loopback-loopback origins return 403 `ORIGIN_DENIED`.
+
+### Known limitation
+- **IPFS gateway throttling:** of the four public gateways only `gateway.pinata.cloud` reliably responds; `dweb.link`, `w3s.link` and `ipfs.io` return **HTTP 429** from this machine. The multi-gateway retry plus the cache-with-preserve path make this safe (ownership and any previously fetched metadata are never lost, and a later successful fetch fills the row), but **a token whose metadata has never been cached can still come back with `metadata: null` until a gateway allows the request**. Chain facts (owner, block, tokenURI) are unaffected. Mitigations if this persists: pin the token URIs to a dedicated gateway, self-host an IPFS gateway, or move metadata retrieval off the request path. This is environment/throttling, not an application defect.
+
 ---
 
 Version 4.0 · Updated 16 October 2026 · Session 4 of ~8 (deployment readiness + browser verification)

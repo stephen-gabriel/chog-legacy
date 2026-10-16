@@ -39,7 +39,8 @@ export interface RunningServer {
 function corsHeaders(req: IncomingMessage, config: Config): Record<string, string> | null {
   const origin = req.headers.origin;
   if (!origin) return null;
-  if (origin !== config.appOrigin && !/^http:\/\/localhost(:\d+)?$/.test(origin)) return null;
+  const localhostDev = !config.production && /^http:\/\/localhost(:\d+)?$/.test(origin);
+  if (origin !== config.appOrigin && !localhostDev) return null;
   return {
     'access-control-allow-origin': origin,
     'access-control-allow-methods': 'GET, POST, OPTIONS',
