@@ -1,0 +1,38 @@
+# Render Blueprint — free web service + external Postgres (Neon free).
+# Usage: Render dashboard → New → Blueprint → point at this repo,
+# or fill the same values manually on New → Web Service.
+services:
+  - type: web
+    name: chog-legacy
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY
+        value: "1"
+      - key: DB_SSL
+        value: "1"
+      - key: APP_ORIGIN
+        sync: false # set to https://<your-service>.onrender.com after first deploy
+      - key: DATABASE_URL
+        sync: false # paste the Neon pooled connection string
+      - key: SESSION_SECRET
+        generateValue: true
+      # Optional: identity-space label (default chog-mainnet is correct for the
+      # mainnet deployment). The SIWE sign-in message domain is taken from
+      # APP_ORIGIN's host automatically — no separate setting needed.
+      # - key: IDENTITY_NAMESPACE
+      #   value: chog-mainnet
+      # Optional overrides (defaults are fine):
+      # - key: MAINNET_RPC_URL
+      #   value: https://rpc.monad.xyz
+      # - key: CHOG_CONTRACT_ADDRESS
+      #   value: 0xc96d31f8626c6d03fae5dcd3d61e3fb9f4a73763
+      # - key: HISTORY_START_BLOCK
+      #   value: "101997010"

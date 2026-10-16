@@ -1,0 +1,13 @@
+node_modules
+dist
+dist-server
+.git
+*.log
+.env
+.env.*
+!.env.example
+evidence
+tests
+_build_plan
+vitest.db.config.ts
+vite.config.ts

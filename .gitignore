@@ -1,0 +1,10 @@
+node_modules/
+dist/
+dist-server/
+*.log
+*.err
+.DS_Store
+.env
+.env.*
+!.env.example
+!.env.production.example
