@@ -1,8 +1,8 @@
 # Chog Legacy — UI design AI handoff
 
-Version 1.0 · 9 October 2026
+Version 2.0 · 16 October 2026
 
-This file lists the interface work needed. It does not design the interface. The design AI chooses visual language, hierarchy, layout, typography, color, artwork, motion and responsive composition. Do not interpret any information list below as a prescribed layout.
+This file retains the required screen and behavior coverage. The current visual design is **The Milkwood Journal**, specified in `UI_DESIGN.md` and implemented in runtime `src/ui/`. The old `_build_plan/ui-design/` package is retired. Apply the new implementation; do not ask another design agent to reinterpret it. FRD remains authoritative for behavior.
 
 ## 1. Product to express
 
@@ -75,15 +75,13 @@ Loading or success treatments must reflect actual API outcomes. Do not imply a c
 
 Do not invent real collection artwork, verified owners or transaction hashes. Use retrieved images only when authorized/available; fixture placeholders must remain distinguishable. The implementation agent must not have to guess which assets are missing.
 
-## 6. Requested designer deliverables
+## 6. Implementation contract
 
-Provide an implementable React + TypeScript component package using plain CSS/CSS Modules, route/component inventory, responsive states, asset inventory and integration instructions. No Tailwind dependency. If the tool produces mockups rather than code, include annotated behavior and a clear asset export so OpenCode can implement it faithfully.
+The supplied Milkwood Journal redesign is React + TypeScript with CSS Modules and no new runtime dependency. Apply its runtime source faithfully, preserving the current repository's backend and integration handlers. `UI_DESIGN.md` defines the layout and visual direction; `UI_ASSETS.md` records the supplied art and icons. The source in the old `ui-design/` folder is retired.
 
-Use fixtures shaped around the supplied API contracts. Include at least an unstarted token, neutral active token, feared token, inherited feared token, read-only non-owner and quota-exhausted token. Keep fixture handling separate from production fetching.
+Components receive server-provided state and exact previews. Existing authentication, ownership checks, database saves and failure semantics remain authoritative. Keep dev fixtures out of production. Confirm unstarted, owner, non-owner, stale/unavailable, neutral/locked-choice, inherited and quota-exhausted states in the full application.
 
-Specify component inputs and event callbacks for connect/sign-in, token lookup, ownership refresh, activation, intention, choice submission, pagination and practice reset. The UI must receive server state rather than own canonical game rules.
-
-Do not implement real authentication, database writes or RPC calls as decorative stubs that falsely indicate success. OpenCode will connect those functions. Include a list of any unresolved behavior questions; consult the FRD before inventing answers.
+The handoff package contains the OpenCode integration prompt and a limited-scope validation report. Run the full repository's actual test/build scripts after merging. Do not treat the offline visual preview as a real-holder integration test.
 
 ## 7. Usability validation
 

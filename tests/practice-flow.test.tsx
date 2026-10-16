@@ -31,26 +31,26 @@ describe('browser critical path', () => {
     await user.click(enabled[0]);
     await user.click(screen.getByRole('button', { name: /^Confirm:/ }));
 
-    expect(await screen.findByText(/✓ Saved/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^Saved\./)).toBeInTheDocument();
     expect(screen.getByText(/Receipt/i)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Simulate controller change/i }));
-    expect(await screen.findByText(/You inherited/i)).toBeInTheDocument();
-    expect(screen.getByText(/Controller B/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /A feared name\. A fresh chapter\./ })).toBeInTheDocument();
+    expect(screen.getAllByText(/Controller B/).length).toBeGreaterThan(0);
 
     await user.click(screen.getByRole('button', { name: /Continue to today’s encounter/i }));
     expect(await screen.findByText(/Decision 2 of 3 today/)).toBeInTheDocument();
-    expect(screen.getByText('Controller B — simulated')).toBeInTheDocument();
+    expect(screen.getByText(/Controller B/)).toBeInTheDocument();
 
     const radios2 = screen.getAllByRole('radio') as HTMLInputElement[];
     const enabled2 = radios2.filter(r => !r.disabled);
     await user.click(enabled2[0]);
     await user.click(screen.getByRole('button', { name: /^Confirm:/ }));
-    expect(await screen.findByText(/✓ Saved/i)).toBeInTheDocument();
+    expect(await screen.findByText(/^Saved\./)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Open chronicle' }));
     expect(await screen.findByRole('heading', { name: 'Chronicle' })).toBeInTheDocument();
-    expect(screen.getByText(/Simulated controller: /)).toBeInTheDocument();
+    expect(screen.getByText('Simulated controller')).toBeInTheDocument();
 
     const filter = screen.getByLabelText(/Show/);
     await user.selectOptions(filter, 'ownership');
@@ -72,7 +72,7 @@ describe('browser critical path', () => {
     const radios = screen.getAllByRole('radio') as HTMLInputElement[];
     await user.click(radios.filter(r => !r.disabled)[0]);
     await user.click(screen.getByRole('button', { name: /^Confirm:/ }));
-    await screen.findByText(/✓ Saved/i);
+    await screen.findByText(/^Saved\./);
     await user.click(screen.getByRole('button', { name: 'Open chronicle' }));
 
     await user.click(screen.getByRole('button', { name: 'Reset practice' }));
@@ -91,7 +91,7 @@ describe('browser critical path', () => {
     const radios = screen.getAllByRole('radio') as HTMLInputElement[];
     await user.click(radios.filter(r => !r.disabled)[0]);
     await user.click(screen.getByRole('button', { name: /^Confirm:/ }));
-    await screen.findByText(/✓ Saved/i);
+    await screen.findByText(/^Saved\./);
     first.unmount();
 
     render(<App />);
@@ -103,10 +103,10 @@ describe('browser critical path', () => {
   it('real token lookup fails closed without inventing chain data', async () => {
     const user = userEvent.setup();
     render(<App />);
-    const input = screen.getByLabelText('Token ID');
+    const input = screen.getByLabelText('Chog token ID');
     await user.type(input, '1425');
     await user.click(screen.getByRole('button', { name: 'Open profile' }));
-    expect(await screen.findByRole('heading', { name: 'Chog #1425' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'The character journal.' })).toBeInTheDocument();
     expect(await screen.findByText(/Could not reach the Chog API/i)).toBeInTheDocument();
     expect(screen.getByText(/STORAGE_UNAVAILABLE/)).toBeInTheDocument();
     expect(screen.queryByText(/Current owner:/i)).not.toBeInTheDocument();

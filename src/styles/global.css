@@ -2,9 +2,8 @@ html,
 body {
   margin: 0;
   padding: 0;
-  background: #15112a;
+  background: #f8f5ed;
 }
-
 #root {
   min-height: 100vh;
 }

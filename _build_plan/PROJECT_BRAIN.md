@@ -1,6 +1,8 @@
 # Chog Legacy — project brain
 
-Version 1.0 · 9 October 2026 · Status: direction selected; implementation not started
+> Current UI decision (16 October 2026): **The Milkwood Journal** replaces the night-ledger design. Cream paper, cocoa ink, sage accents and an original fictional practice illustration. `UI_DESIGN.md` governs presentation; `src/ui/` is the runtime source. The product remains Chog Legacy; no new gameplay scope is implied.
+
+Version 1.0 · 9 October 2026 · Original planning baseline; current implementation status is tracked in IMPLEMENTATION_PROGRESS.md
 
 ## One-line pitch
 
@@ -91,6 +93,7 @@ Full provenance is supplementary: missing old logs must not block gameplay if cu
 
 | Date | Decision | Reason |
 | --- | --- | --- |
+| 2026-10-16 | Milkwood Journal replaces night-ledger UI | User requested a creamy, attractive story-game interface; preserve existing rules and integration |
 | 2026-10-09 | Daily story game over a full living world | More achievable, works with one holder, provides decisions and repeat use |
 | 2026-10-09 | Inherited villain reputation as the showcase | Makes continuity affect gameplay rather than merely generate biography |
 | 2026-10-09 | Authored deterministic core; AI optional | Protects $0 budget, consistency, latency and explainability |

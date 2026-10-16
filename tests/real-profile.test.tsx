@@ -133,11 +133,12 @@ describe('real profile page with a live API', () => {
     fetchMock.mockImplementation(routeFetch({ profile: () => jsonResponse(makeProfile()) }));
     render(<App />);
 
-    expect(await screen.findByRole('heading', { name: 'Chog #1425' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'The character journal.' })).toBeInTheDocument();
+    expect(screen.getByText(/Real Chog · Monad mainnet · token 1425/)).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 2, name: 'CHOG #917' })).toBeInTheDocument();
-    expect(screen.getByText('Current owner:')).toBeInTheDocument();
-    expect(screen.getByText('0x6016…2b88')).toBeInTheDocument();
-    expect(screen.getByText(/Ownership fresh at block 113,000,000/)).toBeInTheDocument();
+    expect(screen.getByText('Current owner: 0x6016…2b88')).toBeInTheDocument();
+    expect(screen.getByText(/Ownership fresh ·/)).toBeInTheDocument();
+    expect(screen.getByText(/Ownership observed at block 113,000,000/)).toBeInTheDocument();
     expect(screen.getByText('Type: Ashen')).toBeInTheDocument();
     expect(screen.getByText('Mood: Wary')).toBeInTheDocument();
 
@@ -146,9 +147,10 @@ describe('real profile page with a live API', () => {
 
     expect(screen.getByRole('heading', { name: 'Chronicle' })).toBeInTheDocument();
     expect(screen.getByText(/You kept the disputed cache/)).toBeInTheDocument();
-    expect(screen.getByText(/Minted to 0x601634f3d0746b550e68439286c1ad022a5f2b88/)).toBeInTheDocument();
-    expect(screen.getByText(/cursor at 102,000,000 of current block 113,656,437/)).toBeInTheDocument();
-    expect(screen.getByText(/No chapter exists for this Chog yet/)).toBeInTheDocument();
+    expect(screen.getByText(/Minted to 0x6016…2b88/)).toBeInTheDocument();
+    expect(screen.getByText(/Partial chain history · indexed to block 102000000/)).toBeInTheDocument();
+    expect(screen.getByText(/Indexed from block 101,997,010 to 102,000,000\. Coverage: partial\./)).toBeInTheDocument();
+    expect(screen.getByText(/No chapters yet\. Its first verified owner can begin the story/)).toBeInTheDocument();
 
     const calls = profileCallsOf(fetchMock);
     expect(calls).toHaveLength(1);
@@ -175,14 +177,14 @@ describe('real profile page with a live API', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByRole('heading', { name: 'Chog #1425' });
+    await screen.findByRole('heading', { name: 'The character journal.' });
     await user.click(screen.getByRole('button', { name: 'Refresh chain data' }));
 
     expect(await screen.findByRole('button', { name: 'Refreshing…' })).toBeDisabled();
 
     resolveRefresh(jsonResponse(makeProfile()));
     expect(await screen.findByRole('button', { name: 'Refresh chain data' })).toBeEnabled();
-    expect(screen.getByText('Current owner:')).toBeInTheDocument();
+    expect(screen.getByText(/Current owner:/)).toBeInTheDocument();
 
     const refreshCalls = fetchMock.mock.calls.filter(([u]) => String(u) === '/api/profile/refresh');
     expect(refreshCalls).toHaveLength(1);
@@ -201,12 +203,11 @@ describe('real profile page with a live API', () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await screen.findByRole('heading', { name: 'Chog #1425' });
+    await screen.findByRole('heading', { name: 'The character journal.' });
     await user.click(screen.getByRole('button', { name: 'Refresh chain data' }));
 
     expect(await screen.findByText(/Monad RPC is unreachable/)).toBeInTheDocument();
-    expect(screen.getByText('Current owner:')).toBeInTheDocument();
-    expect(screen.getByText('0x6016…2b88')).toBeInTheDocument();
+    expect(screen.getByText('Current owner: 0x6016…2b88')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh chain data' })).toBeEnabled());
   });
 });

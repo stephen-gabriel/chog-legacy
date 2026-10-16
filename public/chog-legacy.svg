@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
+  <title>Chog Legacy</title>
+  <desc>A cream open storybook on a rounded cocoa background.</desc>
+  <rect width="64" height="64" rx="16" fill="#332D26"/>
+  <path d="M32 20C25 15 18 16 12 19V46C19 43 25 44 32 49C39 44 45 43 52 46V19C46 16 39 15 32 20Z" fill="#FFF5DF"/>
+  <path d="M32 21V46" stroke="#332D26" stroke-width="3.5" stroke-linecap="round"/>
+  <path d="M19 25C22 24 25 25 27 26M19 32C22 31 25 32 27 33" stroke="#8A9875" stroke-width="3" stroke-linecap="round"/>
+  <path d="M39 18V32L43 29L47 32V17" fill="#A55B34"/>
+</svg>

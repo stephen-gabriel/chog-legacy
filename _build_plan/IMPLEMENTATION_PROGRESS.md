@@ -1,5 +1,19 @@
 # Chog Legacy — implementation progress
 
+## UI refresh handoff — 16 October 2026
+
+Milkwood Journal presentation implemented from the uploaded partial source export. New cream/sage journal design, original fictional practice illustration, responsive profile and encounter layouts, readable exact previews, saved-chapter and inheritance screens, compact wallet controls and current visual/asset docs. The product name stays Chog Legacy. Original `ui-design/` prototype is retired.
+
+Preserved the existing auth/API hooks, practice/game services, deterministic rules and quotas. Presentation mapping corrections: numeric chronology ordering before date formatting; observed NFT owner label rather than historical gameplay controller. Added practice heading focus, a UI submit guard, and honest clipboard feedback.
+
+Verification in the isolated frontend environment: strict TypeScript and Vite production build; 28 browser flow/layout assertions; eight sampled WCAG A/AA axe scans corrected to zero violations; offline preview practice save. Home/profile/encounter fit 320, 390, 768 and 1440px; real-profile fixture also checked at 390px. Main practice flow uses the actual supplied browser service. Real profile and auth/health responses in UI QA were fixtures, not live chain evidence. Two mapping assertions checked timestamp ordering and current-owner labeling.
+
+This export did not contain root server/, db/, tests/ or the project's root build configuration. The full backend, DB, production server, real wallet and holder-save regressions MUST be run in the existing repository before release. Prior session results below are historical reported evidence, not rerun by this UI pass. No remote push or deployment was performed. The user reports the previous app is deployed; that is separate from deploying this redesign.
+
+Next: integrate the UI handoff into the current full project, retain newer local changes, run its typecheck/unit/DB/build/browser gates and inspect the resulting UI. Keep the real-holder saved-choice gate explicit. Connected story consequences and inherited unfinished obligations remain separate pending gameplay work.
+
+---
+
 Version 4.0 · Updated 16 October 2026 · Session 4 of ~8 (deployment readiness + browser verification)
 
 Session 1 delivered the shared rules engine, in-memory service, full practice loop, the four UI fixes, 66 tests and Gate 0 probing (sections below). Session 2 delivered **Milestone 2**: Postgres persistence, the HTTP API, genuine mainnet profile reads, and the fail-closed 401 gate on every gameplay mutation. Session 3 delivered **Milestone 3**: SIWE wallet authentication with HttpOnly sessions, origin/CSRF protection, and owner-authorized gasless play (evidence in `INTEGRATION_EVIDENCE.md` §9). Session 4 delivered **Milestone 4** — minus the consented holder walkthrough: hosting research + full deployment configuration, production-bundle verification, 27/27 real-browser checks against live mainnet, and the practice-timeout root cause (evidence in `INTEGRATION_EVIDENCE.md` §10).

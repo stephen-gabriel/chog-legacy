@@ -173,10 +173,15 @@ function makeServerSim() {
   return { fetchImpl, stats };
 }
 
+async function openWalletDock(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await user.click(await screen.findByRole('button', { name: /^Wallet/ }));
+}
+
 async function reachSignedState(user: ReturnType<typeof userEvent.setup>): Promise<void> {
+  await openWalletDock(user);
   await user.click(await screen.findByRole('button', { name: 'Connect wallet' }));
   await user.click(await screen.findByRole('button', { name: 'Sign in' }));
-  await screen.findByText('Signed in. Open a Chog to confirm ownership.');
+  await screen.findByText('Signed in. Open a Chog to check ownership.');
 }
 
 function storageEntries(): string[] {
@@ -215,7 +220,7 @@ describe('SIWE sign-in flow with a mocked wallet', () => {
     render(<App />);
     await reachSignedState(user);
 
-    expect(screen.getByText('● Signed in')).toBeInTheDocument();
+    expect((await screen.findAllByText('Signed in')).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Log out' })).toBeInTheDocument();
 
     for (const method of provider.methods) {
@@ -261,11 +266,12 @@ describe('SIWE sign-in flow with a mocked wallet', () => {
   it('handles wallet rejection without requesting a session or leaving read-only', async () => {
     const user = userEvent.setup();
     render(<App />);
+    await openWalletDock(user);
     await user.click(await screen.findByRole('button', { name: 'Connect wallet' }));
     provider.rejectNextSign = true;
     await user.click(await screen.findByRole('button', { name: 'Sign in' }));
 
-    await screen.findByText('Signature cancelled. You are read-only.');
+    await screen.findByText('Signature cancelled. You’re viewing read-only.');
     expect(screen.getByText('Signature cancelled. You stay read-only; nothing was signed or sent.')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
     expect(sim.stats.verify).toBe(0);
@@ -275,12 +281,13 @@ describe('SIWE sign-in flow with a mocked wallet', () => {
   it('refuses to sign in on the wrong chain before requesting a nonce', async () => {
     const user = userEvent.setup();
     render(<App />);
+    await openWalletDock(user);
     await user.click(await screen.findByRole('button', { name: 'Connect wallet' }));
     provider.chainHex = '0x1';
     await user.click(await screen.findByRole('button', { name: 'Sign in' }));
 
     await screen.findByText(/Your wallet is on chain 1\. Switch it to Monad \(chain 143\)/);
-    expect(screen.getByText('This wallet can’t sign in here.')).toBeInTheDocument();
+    expect(screen.getByText('Switch your wallet to the app’s network, then retry sign-in.')).toBeInTheDocument();
     expect(sim.stats.nonce).toBe(0);
     expect(sim.stats.verify).toBe(0);
     expect(provider.methods).not.toContain('personal_sign');
@@ -292,7 +299,7 @@ describe('SIWE sign-in flow with a mocked wallet', () => {
     await reachSignedState(user);
 
     provider.emit('accountsChanged', [OTHER_ACCOUNT]);
-    await screen.findByText('Wallet account changed. Sign in again.');
+    await screen.findByText('Your wallet account changed. Sign in again.');
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
     expect(sim.stats.session).toBeGreaterThanOrEqual(1);
   });
@@ -303,7 +310,7 @@ describe('SIWE sign-in flow with a mocked wallet', () => {
     await reachSignedState(user);
 
     await user.click(screen.getByRole('button', { name: 'Log out' }));
-    await screen.findByText('Not connected');
+    await screen.findByText('Wallet not connected');
     expect(sim.stats.logout).toBe(1);
     expect(screen.getByRole('button', { name: 'Connect wallet' })).toBeInTheDocument();
   });

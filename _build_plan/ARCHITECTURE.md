@@ -1,5 +1,7 @@
 # Chog Legacy — technical architecture
 
+> UI revision, 16 October 2026: `UI_DESIGN.md` and runtime `src/ui/` now define the Milkwood Journal presentation. The old `ui-design/` prototype is retired. This note changes no gameplay, permissions, API, or acceptance rules.
+
 Version 1.0 · 9 October 2026 · No visual design prescribed
 
 ## 1. Proposed implementation

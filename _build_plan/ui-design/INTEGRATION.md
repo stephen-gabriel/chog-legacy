@@ -1,3 +1,9 @@
+# RETIRED — original night-ledger prototype
+
+Superseded on 16 October 2026 by `_build_plan/UI_DESIGN.md` and runtime `src/ui/`. This folder is an archival snapshot only. Do not import, copy, or reapply its components/styles. The statements below describe the old prototype, not the current app.
+
+---
+
 # Chog Legacy UI — integration guide
 
 Stack: React + TypeScript, CSS Modules (`ui.module.css`), no Tailwind, no runtime dependencies beyond React.

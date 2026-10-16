@@ -1,0 +1,74 @@
+{
+  "date": "2026-10-16",
+  "environment": "headless Chromium; real browser-local practice service; intercepted auth/health and real-profile fixture responses",
+  "flow_assertions_passed": [
+    "token input validation",
+    "wallet popover Escape closes and restores focus",
+    "encounter requires selection and focuses heading",
+    "keyboard choice commits through existing practice service",
+    "handoff preserves saved stats and remaining quota",
+    "Decide later keeps intention reopenable",
+    "refresh preserves practice progress",
+    "chronicle filter",
+    "chronicle pagination",
+    "three-action limit removes play CTA",
+    "handoff cannot reset exhausted quota",
+    "confirmed practice reset",
+    "home 320 no overflow",
+    "profile 320 no overflow",
+    "encounter 320 no overflow",
+    "home 390 no overflow",
+    "profile 390 no overflow",
+    "encounter 390 no overflow",
+    "home 768 no overflow",
+    "profile 768 no overflow",
+    "encounter 768 no overflow",
+    "home 1440 no overflow",
+    "profile 1440 no overflow",
+    "encounter 1440 no overflow",
+    "real-profile fixture uses neutral image fallback and no simulation handoff",
+    "refresh failure keeps existing real profile visible",
+    "real profile 390 no overflow",
+    "zero uncaught browser errors"
+  ],
+  "final_axe_scans": [
+    {
+      "name": "home desktop",
+      "violations": []
+    },
+    {
+      "name": "practice profile",
+      "violations": []
+    },
+    {
+      "name": "encounter selected",
+      "violations": []
+    },
+    {
+      "name": "saved outcome",
+      "violations": []
+    },
+    {
+      "name": "inheritance",
+      "violations": []
+    },
+    {
+      "name": "home mobile",
+      "violations": []
+    },
+    {
+      "name": "encounter mobile",
+      "violations": []
+    },
+    {
+      "name": "real profile fallback",
+      "violations": []
+    }
+  ],
+  "uncaught_page_errors": [],
+  "offline_preview": {
+    "file_url_save": "passed",
+    "external_requests": 0,
+    "width_320_overflow_px": 0
+  }
+}
