@@ -87,6 +87,12 @@ Prepared `ui-rebirth-milkwood` for the GitHub → Render release without pushing
 **Gates re-run after the fixes**
 - `npm run typecheck` — clean; `npm test` — 144/144; `npm run test:db` — 52/52; `npm run build` — clean; `docker build --no-cache` — success.
 
+**Blank `/practice` with an older localStorage payload (new this pass)**
+- Symptom: production bundle blank on `/practice` (empty `#root`) when `chog-legacy:practice:v1` held a pre–story-consequences payload (character/epoch/events present, no `consequences` array, no `sequences` map). Console: `TypeError: Cannot read properties of undefined (reading 'filter')` from `GameService.getProfile` (`s.consequences.filter` / related paths on `DbState`).
+- Cause: `loadPracticeDb` (`src/server/storage.ts`) accepted any payload with a non-empty `characters` array and returned the raw `db` without normalizing fields added after the arc (`consequences`, `sequences`, plus defensive `budgets`/`instances`/`receipts`).
+- Fix: `loadPracticeDb` now runs every accepted payload through `normalizeDb` — missing collections become `[]`, missing/invalid `sequences` becomes `{}`. In-memory practice saves keep working; existing character stats/events are preserved (not reseeded).
+- Verified on `http://127.0.0.1:8420` (server pid 9024 serves rebuilt `dist` without restart): old payload loads `/practice` (`Every chapter counts.`), continue → handoff (`You inherited a Chog with a past.`) → journal → reload — 0 page errors, 0 console errors; normalized state written back (`consequences` present); fresh seed still version 4 / 4 events.
+
 **Docs**
 - `DEPLOYMENT.md`: migration section now states migrations run *before* the listener and names `0001`/`0002` as the non-destructive order; deploy-log section tells the operator to look for the applied-migrations line then `listening … (origin …)`; post-deploy verification adds the origin-enforcement `curl` pair (200 vs 403) and notes a wrong `APP_ORIGIN` surfaces as the wrong host in the SIWE challenge.
 - Release steps and post-deploy verification for the existing GitHub/Render setup remain in `DEPLOYMENT.md` (§2 push, §3 Render env, §4 verification) — unchanged except the above additions. **No push and no deploy were performed this pass.**

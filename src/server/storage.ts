@@ -19,6 +19,24 @@ export function savePracticeDb(state: DbState): void {
   }
 }
 
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function normalizeDb(db: DbState): DbState {
+  return {
+    ...db,
+    characters: asArray(db.characters),
+    epochs: asArray(db.epochs),
+    events: asArray(db.events),
+    budgets: asArray(db.budgets),
+    instances: asArray(db.instances),
+    receipts: asArray(db.receipts),
+    sequences: db.sequences && typeof db.sequences === 'object' ? db.sequences : {},
+    consequences: asArray(db.consequences),
+  };
+}
+
 export function loadPracticeDb(clock: Clock): DbState {
   if (storageAvailable()) {
     try {
@@ -26,7 +44,7 @@ export function loadPracticeDb(clock: Clock): DbState {
       if (raw) {
         const parsed = JSON.parse(raw) as { db?: DbState };
         if (parsed.db && Array.isArray(parsed.db.characters) && parsed.db.characters.length > 0) {
-          return parsed.db;
+          return normalizeDb(parsed.db);
         }
       }
     } catch {
