@@ -9,4 +9,5 @@ dist-server
 evidence
 tests
 _build_plan
+ui-rebirth
 vitest.db.config.ts

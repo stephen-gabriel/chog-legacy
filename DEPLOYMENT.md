@@ -1,8 +1,6 @@
 # Chog Legacy — deployment guide ($0 budget)
 
-Version 1.0 · 16 October 2026 · prepared for Milestone 4
-
-The app is a single Node service: it serves the built SPA (`dist/`), the JSON API under `/api/*`, runs migrations on boot, and needs only a Postgres database. No CLI deploy is possible from the build machine (no provider CLIs/credentials installed), so the steps below are the exact manual path.
+The app is a single Node service: it serves the built SPA (`dist/`), the JSON API under `/api/*`, runs migrations on boot, and needs only a Postgres database. The steps below are the exact manual path (no provider CLI or credentials are required).
 
 **Primary stack (both free):** Render Free Web Service + Neon Free Postgres, same origin (no CORS configuration anywhere).
 
@@ -24,7 +22,14 @@ Never purchase or enable any paid resource.
 
 ## 2. One-time: push the repo to GitHub
 
-Render builds from a Git repository. If the project is not on GitHub yet, create a repo and push (the `share` workflow can do this, or plain `git init && git add -A && git commit && git remote add … && git push`).
+Render builds from a Git repository. If the project is not on GitHub yet, create a repo and push:
+
+```bash
+git init
+git add -A && git commit -m "chog legacy"
+git remote add origin https://github.com/<you>/chog-legacy.git
+git push -u origin main
+```
 
 Do **not** commit `.env`, `.env.production`, or any real secrets. `.env.production.example` is the committed checklist.
 
@@ -112,4 +117,4 @@ node dist-server/main.js
 
 - No paid-tier config, no purchased domains, no API keys for the chain (the public `https://rpc.monad.xyz` works keyless).
 - No holder private keys, ever — sign-in is a free `personal_sign` message only.
-- No CI deploy pipeline — deployment is the manual path above (provider CLIs are absent on the build machine).
+- No CI deploy pipeline — deployment is the manual path above.
