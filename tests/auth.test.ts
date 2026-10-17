@@ -179,17 +179,18 @@ describe('session cookie helpers', () => {
   });
 
   it('builds an HttpOnly SameSite session cookie with Max-Age', () => {
-    const expires = new Date(Date.now() + 3600_000);
-    const cookie = buildSessionCookie('tok', expires, 'http://localhost:5173');
+    const now = new Date('2026-10-17T03:00:00.000Z');
+    const expires = new Date(now.getTime() + 3600_000);
+    const cookie = buildSessionCookie('tok', expires, 'http://localhost:5173', now);
     expect(cookie.startsWith(`${SESSION_COOKIE}=tok; `)).toBe(true);
     expect(cookie).toContain('Path=/');
     expect(cookie).toContain('HttpOnly');
     expect(cookie).toContain('SameSite=Lax');
-    expect(cookie).toMatch(/Max-Age=3\d{3}/);
+    expect(cookie).toContain('Max-Age=3600');
     expect(cookie).not.toContain('Secure');
-    const secure = buildSessionCookie('tok', expires, 'https://chog.example');
+    const secure = buildSessionCookie('tok', expires, 'https://chog.example', now);
     expect(secure).toContain('; Secure');
-    expect(buildSessionCookie('tok', expires, 'https://chog.example')).toBe(secure);
+    expect(buildSessionCookie('tok', expires, 'https://chog.example', now)).toBe(secure);
   });
 
   it('builds a clearing cookie', () => {

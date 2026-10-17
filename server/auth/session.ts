@@ -26,8 +26,8 @@ export function parseCookieHeader(header: string | null | undefined): Record<str
   return out;
 }
 
-export function buildSessionCookie(token: string, expiresAt: Date, appOrigin: string): string {
-  const maxAge = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+export function buildSessionCookie(token: string, expiresAt: Date, appOrigin: string, now: Date = new Date()): string {
+  const maxAge = Math.max(0, Math.floor((expiresAt.getTime() - now.getTime()) / 1000));
   return `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureFlag(appOrigin)}`;
 }
 

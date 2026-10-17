@@ -272,7 +272,7 @@ export async function handleApi(deps: ApiDeps, req: ApiRequest): Promise<ApiResp
     const wallet = await verifySignIn(deps.pool, deps.config, { message, signature }, deps.now());
     const { token, expiresAt } = await createSession(deps.pool, deps.config, wallet, deps.now());
     const json = sessionJson(deps, { wallet, expiresAt }, false);
-    return { status: 200, json, setCookie: buildSessionCookie(token, expiresAt, deps.config.appOrigin) };
+    return { status: 200, json, setCookie: buildSessionCookie(token, expiresAt, deps.config.appOrigin, deps.now()) };
   }
 
   if (method === 'GET' && path === '/api/auth/session') {
