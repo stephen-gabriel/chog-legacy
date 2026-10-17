@@ -64,6 +64,33 @@ Shared rules (`src/shared/rules/story.ts` + `buildEncounterView`) now take an ex
 **Server / deploy posture**
 - Detached local server left running on `http://127.0.0.1:8420` (pid 9024, health `{"ok":true,"db":true,"chain":{...},"contractName":"Chog Genesis","chainId":143}`). No push, no deploy. Real-holder walkthrough still pending (`REAL_HOLDER_CHECK.md`).
 
+### Deployment readiness — 17 October 2026
+
+Prepared `ui-rebirth-milkwood` for the GitHub → Render release without pushing or deploying. Fixes and evidence only; real-holder verification stays pending.
+
+**Practice test clock — production gate**
+- `practiceClock` (acceptance harness walks the courier arc across UTC days via `sessionStorage['chog-legacy:practice:clock']`) is **not** honored in a production build. The override is a build-time constant (`__PRACTICE_CLOCK_OVERRIDE__`), true only under `vite dev`/`vitest`, and a Vite `define` that the production client bundle inlines as `false`; `esbuild` does not define it for `dist-server`, so the server build also sees `false`.
+- Verified by reading the emitted client bundle (`dist/assets/index-*.js`): the clock helper collapses to the `systemClock` path with no `sessionStorage` read. Dev/test behavior unchanged (144 unit tests + the browser harness still pass).
+
+**Migration 0002 — safe on an existing Neon-shaped database**
+- Boot order in `server/main.ts` is `loadConfig → createPool → runMigrations → createServer/listen`; nothing is served until migrations finish. `runMigrations` records each file in `schema_migrations` and skips already-applied names, so an existing Neon DB (characters/epochs/events from `0001`) is preserved; `0002_story_consequences.sql` is `CREATE TABLE story_consequences` + two indexes only — no `ALTER`/`DROP` on existing tables, no inserted rows.
+- Verified by booting the production container (`NODE_ENV=production`, `APP_ORIGIN=https://chog-legacy.onrender.com`) against a Postgres seeded only through `0001`: log showed `[chog-api] applied migrations: 0001_init.sql, 0002_story_consequences.sql` then `listening`; post-boot query showed `story_consequences` created, 0 rows, and the pre-existing character row untouched.
+
+**APP_ORIGIN / production origin enforcement**
+- `APP_ORIGIN` is the single public origin: SIWE `domain`/`uri`, session-cookie `Secure` flag, and every write-origin check (`requireOrigin`, `allowOriginIfPresent`, both SIWE origin checks, CORS headers) all derive from `config.appOrigin`. `Config.production` is `NODE_ENV === 'production'`; in production `isAllowedAppOrigin(..., { allowLocalhost: false })` so localhost/127.0.0.1 are rejected outright.
+- Verified against the same production container: `POST /api/auth/nonce` with `Origin: https://chog-legacy.onrender.com` → 200 SIWE challenge (domain/uri match the Render origin); `Origin: https://evil.example.com` → 403 `ORIGIN_DENIED`; missing Origin → 403.
+
+**Build-path fixes (new this pass)**
+- `.dockerignore` no longer excludes `vite.config.ts` (the Dockerfile `COPY`s it; excluding it made `docker build` fail before typecheck).
+- `Dockerfile` build stage no longer copies a nonexistent `shared/` directory; `docker build --no-cache` now completes and the runtime image boots the migrations+origin checks above.
+
+**Gates re-run after the fixes**
+- `npm run typecheck` — clean; `npm test` — 144/144; `npm run test:db` — 52/52; `npm run build` — clean; `docker build --no-cache` — success.
+
+**Docs**
+- `DEPLOYMENT.md`: migration section now states migrations run *before* the listener and names `0001`/`0002` as the non-destructive order; deploy-log section tells the operator to look for the applied-migrations line then `listening … (origin …)`; post-deploy verification adds the origin-enforcement `curl` pair (200 vs 403) and notes a wrong `APP_ORIGIN` surfaces as the wrong host in the SIWE challenge.
+- Release steps and post-deploy verification for the existing GitHub/Render setup remain in `DEPLOYMENT.md` (§2 push, §3 Render env, §4 verification) — unchanged except the above additions. **No push and no deploy were performed this pass.**
+
 ---
 
 Version 4.0 · Updated 16 October 2026 · Session 4 of ~8 (deployment readiness + browser verification)

@@ -5,6 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   plugins: [react()],
+  define: {
+    // Exposed on globalThis and read via globalThis.__PRACTICE_CLOCK_OVERRIDE__
+    // in src/server/service.ts so raw Node (tsx/vitest) never throws. Inlined
+    // true in development/test, false in a production client bundle.
+    __PRACTICE_CLOCK_OVERRIDE__: JSON.stringify(process.env.NODE_ENV !== 'production'),
+  },
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },

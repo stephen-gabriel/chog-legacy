@@ -27,7 +27,22 @@ export const systemClock: Clock = { now: () => new Date() };
 
 const PRACTICE_CLOCK_KEY = 'chog-legacy:practice:clock';
 
+// Acceptance verification sets this key to walk the courier arc across UTC days
+// without changing the machine clock. Two independent guards keep it out of
+// production. The client build (Vite) substitutes this bare identifier for the
+// define's value — true in development and test, false in a production
+// bundle. The server build (esbuild) replaces it with the literal false, so
+// the API ignores sessionStorage even if CHOG_PRACTICE_CLOCK_OVERRIDE=1 is
+// exported. Node runtimes that neither tool has rewritten see the local
+// fallback below instead of throwing ReferenceError. No server code reads the
+// key — practice is browser-local by construction.
+declare const __PRACTICE_CLOCK_OVERRIDE__: boolean;
+const PRACTICE_CLOCK_OVERRIDE_ENABLED =
+  (typeof __PRACTICE_CLOCK_OVERRIDE__ === 'boolean' ? __PRACTICE_CLOCK_OVERRIDE__ : false) ||
+  (typeof navigator !== 'undefined' && process.env.CHOG_PRACTICE_CLOCK_OVERRIDE === '1');
+
 function practiceClockIso(): string | null {
+  if (!PRACTICE_CLOCK_OVERRIDE_ENABLED) return null;
   if (typeof sessionStorage === 'undefined') return null;
   const v = sessionStorage.getItem(PRACTICE_CLOCK_KEY);
   return v && !Number.isNaN(Date.parse(v)) ? v : null;

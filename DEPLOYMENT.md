@@ -18,7 +18,9 @@ Never purchase or enable any paid resource.
 
 1. Sign up at https://neon.tech (free tier), create a project (region close to your Render region, e.g. us-east-1/us-west).
 2. In the Neon console copy the **pooled** connection string (ends with a DB name, e.g. `postgres://user:pass@ep-xxx.aws.neon.tech/neondb?sslmode=require`). The app sets `DB_SSL=true` on Render; the pool connects with TLS.
-3. Nothing else to run: `npm run db:migrate` executes automatically when the server starts (`main.ts` runs migrations on boot; migration files live in `db/migrations/` and are checksum-recorded in `schema_migrations`).
+3. Nothing else to run: migrations run **before the HTTP listener starts** (`startServer` in `server/main.ts` calls `runMigrations(pool)`, then binds the port). Files in `db/migrations/` are applied in filename order inside a transaction each; once applied they are checksum-recorded in `schema_migrations` and never re-applied — an existing Neon database (characters, epochs, events, sessions) is preserved untouched.
+   - Current files: `0001_init.sql` (base tables) and `0002_story_consequences.sql` (courier-debt arc: adds `story_consequences` plus its indexes; creates only, no `ALTER`/`DROP` of existing tables, inserts no rows).
+   - First boot on a database that already has `0001` applies only `0002` and logs `[chog-api] applied migrations: 0002_story_consequences.sql`.
 
 ## 2. One-time: push the repo to GitHub
 
@@ -47,7 +49,10 @@ Do **not** commit `.env`, `.env.production`, or any real secrets. `.env.producti
    | `DB_SSL` | `true` (Neon requires TLS) |
    | `IDENTITY_NAMESPACE` | `chog-mainnet` (identity-space label, not a domain; letters/digits/dashes only) |
 
-4. Deploy. First build takes a few minutes; watch the logs for `[chog-api] listening on http://0.0.0.0:<port>` and the migration lines.
+4. Deploy. First build takes a few minutes. In the logs look for, in this order:
+   - `[chog-api] applied migrations: 0002_story_consequences.sql` (boot runs migrations **before** listening; nothing is served until they finish)
+   - `[chog-api] listening on http://0.0.0.0:<port> (origin https://<your-service>.onrender.com)` — the parenthesized origin is the `APP_ORIGIN` in force
+   - redeploys that already migrated log no `applied migrations` line and go straight to `listening`.
 
 If `render.yaml` is not auto-detected: create the service manually and paste the build/start commands and env vars above from `render.yaml` + `.env.production.example`.
 
@@ -64,6 +69,20 @@ curl -s https://<service>.onrender.com/api/health
 4. **Sign-in domain check:** connect a wallet, click `Sign in`, and in the wallet popup confirm the message starts with `<your-service>.onrender.com wants you to sign in…` and shows `Chain ID: 143`. If `APP_ORIGIN` was wrong, fix it and redeploy — never sign a mismatched domain.
 5. A non-owner wallet on `/chog/1425` sees `Signed in, does not own this Chog` and play stays read-only.
 6. `Log out` returns the UI to `Connect wallet`.
+7. **Origin enforcement** (from any shell, no wallet needed) — production accepts writes only from `APP_ORIGIN`; localhost is allowed in dev only (`NODE_ENV != production`):
+
+   ```bash
+   # 200 + SIWE challenge — correct origin
+   curl -s -X POST https://<service>.onrender.com/api/auth/nonce \
+     -H 'content-type: application/json' -H 'origin: https://<service>.onrender.com' \
+     -d '{"wallet":"0x0000000000000000000000000000000000000001"}'
+   # 403 ORIGIN_DENIED — any other origin (or a missing Origin header)
+   curl -s -o /dev/null -w '%{http_code}\n' -X POST https://<service>.onrender.com/api/auth/nonce \
+     -H 'content-type: application/json' -H 'origin: https://evil.example.com' \
+     -d '{"wallet":"0x0000000000000000000000000000000000000001"}'
+   ```
+
+   A wrong `APP_ORIGIN` shows up here as the 200 case returning the *other* host in `domain`/`uri` — fix the var and redeploy before anyone signs in.
 
 ## 5. Keeping it alive (optional, free)
 
@@ -74,7 +93,7 @@ Render free services sleep after ~15 min idle. For demo day, either:
 
 ## 6. Environment checklist
 
-Copy `.env.production.example` and tick every **Required** var. The browser must never see any of them (no `VITE_` prefixes, no secrets in the client bundle). Local production-parity smoke (what the browser verification ran against):
+Copy `.env.production.example` and tick every **Required** var. The browser must never see any of them (no `VITE_` prefixes, no secrets in the client bundle). The server refuses to boot in production without `SESSION_SECRET`, so a missing var is a failed deploy, not a silent fallback. Local production-parity smoke (what the browser verification ran against):
 
 ```powershell
 $env:DATABASE_URL='postgres://…'; $env:NODE_ENV='production'; $env:SESSION_SECRET='…';

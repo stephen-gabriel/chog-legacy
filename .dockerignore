@@ -10,4 +10,3 @@ evidence
 tests
 _build_plan
 vitest.db.config.ts
-vite.config.ts
