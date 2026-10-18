@@ -43,6 +43,7 @@ const CONFIG: Config = {
   appOrigin: ORIGIN,
   apiPort: 8420,
   metadataTtlMs: 60_000,
+  metadataRetryCooldownMs: 15_000,
   maxLogRange: 100,
   identityNamespace: 'chog-mock',
   sessionSecret: 'test-session-secret-at-least-16-chars',

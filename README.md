@@ -98,11 +98,12 @@ Inheritance works the same in both: reputation, chronicle, remaining daily actio
 
 ## Verification status
 
-- `npm run typecheck` — clean. `npm test` — **144/144**. `npm run test:db` — **52/52**. `npm run build` — clean (client + server bundles).
+- `npm run typecheck` — clean. `npm test` — **148/148**. `npm run test:db` — **54/54**. `npm run build` — clean (client + server bundles).
 - Production bundle checked in a real browser: **27/27 checks** against live Monad mainnet — practice loop, SIWE sign-in with a domain matching the deployed host, non-owner read-only states, account switch, server-side logout, wrong-chain rejection, mobile (390×844) with 0 px overflow, keyboard path, API-down honesty.
 - Courier-debt story arc accepted end-to-end in a browser across three simulated UTC days: **29/29 checks** (journal → chapter → outcome → obligation → inheritance → recall → resolution → cleared).
 - Production container verified against a pre-existing database: migration `0002` applies non-destructively **before** the listener starts, and origin enforcement returns 200 for `APP_ORIGIN` / 403 `ORIGIN_DENIED` for anything else.
 - Saved practice data written before the story-consequences schema is normalized on load, so older sessions keep working (no blank practice page).
+- NFT metadata recovery verified in a real browser against live mainnet and public gateways: a profile opened normally (no manual refresh) recovered an **uncached** token in 8.8 s and a token with a **previously failed, stale cache row** (the production "Pinata timed out; … HTTP 429" signature) in 5.9 s, with portraits loaded and 0 console errors; an immediate reopen inside the cooldown made no new chain attempt (0.05 s).
 - **Real-holder verification is pending** — a consenting holder must sign in and save one real choice on their own NFT against the deployed URL; it is the one evidence class no automated test can produce.
 
 ## Deployment
@@ -117,6 +118,7 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** — Render Free + Neon Free, zero-cost st
 - If `SESSION_SECRET` is unset (dev only), a random per-process secret is used and sessions reset on API restart. Production refuses to boot without it.
 - Render's free tier sleeps after ~15 min idle (≈1 min cold start); see DEPLOYMENT.md §5 for free keep-alive options.
 - Real-holder save verification is still outstanding (above).
+- Public IPFS gateways rate-limit aggressively (HTTP 429) and Pinata can be slow (>8 s). Metadata recovery is automatic when a profile opens, bounded by a per-request time budget and a per-token cooldown (`METADATA_RETRY_COOLDOWN_MS`, default 15 s); a fetch that still fails shows an honest failure notice beside the portrait and is retried on later opens — ownership and gameplay are never blocked on it.
 
 ## Repository notes
 

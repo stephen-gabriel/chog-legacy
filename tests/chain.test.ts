@@ -132,6 +132,25 @@ describe('metadata resolution', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('stops fetching gateways once the total budget is exhausted', async () => {
+    let calls = 0;
+    const result = await resolveMetadata('ipfs://bafy/1.json', {
+      gateways: ['https://one/', 'https://two/', 'https://three/'],
+      retryDelayMs: 0,
+      gatewayDelayMs: 0,
+      totalBudgetMs: 1,
+      fetchImpl: async () => {
+        calls += 1;
+        await new Promise(r => setTimeout(r, 30));
+        return { ok: false, error: 'HTTP 429' };
+      },
+    });
+    expect(calls).toBe(1);
+    expect(result.ok).toBe(false);
+    expect(result.error).toContain('https://one');
+    expect(result.error).toContain('budget');
+  });
+
   it('parses data-URI metadata without a network hop', async () => {
     const json = JSON.stringify({ name: 'Data Chog', image: 'data:image/png;base64,AAAA' });
     const uri = 'data:application/json;base64,' + Buffer.from(json).toString('base64');

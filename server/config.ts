@@ -29,6 +29,7 @@ export interface Config {
   appOrigin: string;
   apiPort: number;
   metadataTtlMs: number;
+  metadataRetryCooldownMs: number;
   maxLogRange: number;
   identityNamespace: string;
   sessionSecret: string;
@@ -64,6 +65,7 @@ export function loadConfig(overrides?: Record<string, string | undefined>): Conf
   const historyStartBlock = Number(env('HISTORY_START_BLOCK') ?? 101997010);
   const apiPort = Number(env('API_PORT') ?? env('PORT') ?? 8420);
   const metadataTtlMs = Number(env('METADATA_TTL_MS') ?? 3600_000);
+  const metadataRetryCooldownMs = Number(env('METADATA_RETRY_COOLDOWN_MS') ?? 15_000);
   const sessionTtlMs = Number(env('SESSION_TTL_MS') ?? 86_400_000);
   const nonceTtlMs = Number(env('NONCE_TTL_MS') ?? 300_000);
   const identityNamespace = (env('IDENTITY_NAMESPACE') ?? 'chog-mainnet').toLowerCase();
@@ -72,6 +74,9 @@ export function loadConfig(overrides?: Record<string, string | undefined>): Conf
   }
   if (!Number.isFinite(metadataTtlMs) || !Number.isFinite(sessionTtlMs) || !Number.isFinite(nonceTtlMs)) {
     throw new ConfigError('METADATA_TTL_MS, SESSION_TTL_MS and NONCE_TTL_MS must be numbers');
+  }
+  if (!Number.isFinite(metadataRetryCooldownMs) || metadataRetryCooldownMs < 0) {
+    throw new ConfigError('METADATA_RETRY_COOLDOWN_MS must be a non-negative number');
   }
   if (sessionTtlMs <= 0 || nonceTtlMs <= 0) throw new ConfigError('SESSION_TTL_MS and NONCE_TTL_MS must be positive');
   if (!/^[a-z0-9-]{1,64}$/.test(identityNamespace)) {
@@ -95,6 +100,7 @@ export function loadConfig(overrides?: Record<string, string | undefined>): Conf
     appOrigin: env('APP_ORIGIN') ?? `http://localhost:5173`,
     apiPort,
     metadataTtlMs,
+    metadataRetryCooldownMs,
     maxLogRange: 100,
     identityNamespace,
     sessionSecret: session.secret,

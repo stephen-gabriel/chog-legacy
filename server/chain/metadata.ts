@@ -60,9 +60,19 @@ function extract(json: unknown): Omit<MetadataResult, 'ok' | 'error'> {
   return { name, imageUri, traits };
 }
 
+export interface ResolveMetadataOptions {
+  timeoutMs?: number;
+  gateways?: string[];
+  fetchImpl?: typeof fetchJson;
+  cycles?: number;
+  retryDelayMs?: number;
+  gatewayDelayMs?: number;
+  totalBudgetMs?: number;
+}
+
 export async function resolveMetadata(
   tokenUri: string | null,
-  opts?: { timeoutMs?: number; gateways?: string[]; fetchImpl?: typeof fetchJson; cycles?: number; retryDelayMs?: number },
+  opts?: ResolveMetadataOptions,
 ): Promise<MetadataResult> {
   if (!tokenUri) return { ok: false, name: null, imageUri: null, traits: null, error: 'no token uri' };
   const timeoutMs = opts?.timeoutMs ?? 8000;
@@ -70,6 +80,10 @@ export async function resolveMetadata(
   const doFetch = opts?.fetchImpl ?? fetchJson;
   const cycles = Math.max(1, opts?.cycles ?? 2);
   const retryDelayMs = opts?.retryDelayMs ?? 250;
+  const gatewayDelayMs = opts?.gatewayDelayMs ?? 250;
+  const totalBudgetMs = opts?.totalBudgetMs ?? 20_000;
+  const start = Date.now();
+  const budgetSpent = (): boolean => Date.now() - start >= totalBudgetMs;
 
   if (tokenUri.startsWith('ipfs://')) {
     const errors: string[] = [];
@@ -78,15 +92,22 @@ export async function resolveMetadata(
       if (cycle > 0 && retryDelayMs > 0) {
         await new Promise(r => setTimeout(r, retryDelayMs * cycle));
       }
-      for (const gw of gateways) {
-        const r = await doFetch(gw + path, timeoutMs);
+      if (errors.length > 0 && budgetSpent()) break;
+      for (let i = 0; i < gateways.length; i++) {
+        if (errors.length > 0 && budgetSpent()) break;
+        const r = await doFetch(gateways[i] + path, timeoutMs);
         if (r.ok) {
           const meta = extract(r.json);
           return { ok: true, error: null, ...meta };
         }
-        errors.push(`${gw.replace(/\/$/, '')}: ${r.error}`);
+        errors.push(`${gateways[i].replace(/\/$/, '')}: ${r.error}`);
+        if (i < gateways.length - 1 && gatewayDelayMs > 0 && !budgetSpent()) {
+          await new Promise(r => setTimeout(r, gatewayDelayMs));
+        }
       }
+      if (errors.length > 0 && budgetSpent()) break;
     }
+    if (errors.length > 0 && budgetSpent()) errors.push('metadata fetch budget exhausted');
     return { ok: false, name: null, imageUri: null, traits: null, error: errors.join('; ') };
   }
 
@@ -99,7 +120,11 @@ export async function resolveMetadata(
 
   if (tokenUri.startsWith('https://')) {
     const r = await doFetch(tokenUri, timeoutMs);
-    if (!r.ok) return { ok: false, name: null, imageUri: null, traits: null, error: r.error };
+    if (!r.ok) {
+      const parts = [r.error];
+      if (budgetSpent()) parts.push('metadata fetch budget exhausted');
+      return { ok: false, name: null, imageUri: null, traits: null, error: parts.join('; ') };
+    }
     return { ok: true, error: null, ...extract(r.json) };
   }
 

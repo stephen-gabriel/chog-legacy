@@ -1,5 +1,5 @@
 import type { ReadDeps } from '../game/profile';
-import { listChronicle, readProfile, refreshProfile } from '../game/profile';
+import { listChronicle, readProfileWithRecovery, refreshProfile } from '../game/profile';
 import {
   activateTx,
   commitActionTx,
@@ -298,18 +298,13 @@ export async function handleApi(deps: ApiDeps, req: ApiRequest): Promise<ApiResp
 
   if (method === 'GET' && path === '/api/profile') {
     const identity = parseIdentity(deps, query);
-    let profile = await readProfile(deps, identity);
-    if (profile.metadata === null) {
-      try {
-        profile = await refreshProfile(deps, identity, {
-          metadataTimeoutMs: 5_000,
-          metadataCycles: 1,
-          syncHistory: false,
-        });
-      } catch {
-        profile = await readProfile(deps, identity);
-      }
-    }
+    const profile = await readProfileWithRecovery(deps, identity, {
+      metadataTimeoutMs: 8_000,
+      metadataCycles: 1,
+      metadataGatewayDelayMs: 200,
+      metadataTotalBudgetMs: 10_000,
+      syncHistory: false,
+    });
     return { status: 200, json: profile };
   }
 

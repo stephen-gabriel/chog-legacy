@@ -14,6 +14,7 @@ const CONFIG_FIELDS = {
   appOrigin: 'http://localhost:5173',
   apiPort: 8787,
   metadataTtlMs: 1,
+  metadataRetryCooldownMs: 15_000,
   maxLogRange: 100,
   identityNamespace: 'chog-mainnet',
   sessionSecret: 'test-session-secret-at-least-16-chars',

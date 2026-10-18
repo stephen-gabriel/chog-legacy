@@ -21,7 +21,13 @@ function encodeAbiString(s: string): string {
   return `0x${'0'.repeat(64)}${bytes.length.toString(16).padStart(64, '0')}${dataHex}`;
 }
 
-function startRpcStub(): Promise<{ server: Server; url: string }> {
+interface StubState {
+  brokenTokenIds: Set<string>;
+  tokenUriCalls: Map<string, number>;
+}
+
+function startRpcStub(): Promise<{ server: Server; url: string; state: StubState }> {
+  const state: StubState = { brokenTokenIds: new Set(), tokenUriCalls: new Map() };
   const server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => chunks.push(c));
@@ -43,7 +49,9 @@ function startRpcStub(): Promise<{ server: Server; url: string }> {
           if (data.startsWith('0x6352211e')) return send(`0x${WALLET.slice(2).padStart(64, '0')}`);
           if (data.startsWith('0xc87b56dd')) {
             const id = BigInt('0x' + data.slice(10)).toString();
+            state.tokenUriCalls.set(id, (state.tokenUriCalls.get(id) ?? 0) + 1);
             if (id === '888') return send(encodeAbiString('ftp://bad.example/888.json'));
+            if (state.brokenTokenIds.has(id)) return send(encodeAbiString('ftp://broken.example/metadata.json'));
             return send(encodeAbiString(TOKEN_URI));
           }
           return send(undefined, { code: 3, message: 'execution reverted: unknown selector' });
@@ -59,7 +67,7 @@ function startRpcStub(): Promise<{ server: Server; url: string }> {
     server.listen(0, '127.0.0.1', () => {
       const address = server.address();
       const port = address && typeof address === 'object' ? address.port : 0;
-      resolve({ server, url: `http://127.0.0.1:${port}/` });
+      resolve({ server, url: `http://127.0.0.1:${port}/`, state });
     });
   });
 }
@@ -78,7 +86,7 @@ interface HttpResult {
 }
 
 describe.runIf(gate.ok)('HTTP server smoke test on an ephemeral port (real database, stub RPC)', () => {
-  let rpc: { server: Server; url: string };
+  let rpc: { server: Server; url: string; state: StubState };
   let running: RunningServer;
   let base: string;
 
@@ -114,6 +122,7 @@ describe.runIf(gate.ok)('HTTP server smoke test on an ephemeral port (real datab
       HISTORY_START_BLOCK: '1',
       IDENTITY_NAMESPACE: 'chog-smoke',
       METADATA_TTL_MS: '60000',
+      METADATA_RETRY_COOLDOWN_MS: '1500',
     });
     base = `http://127.0.0.1:${running.port}`;
     expect(running.port).toBeGreaterThan(0);
@@ -266,5 +275,63 @@ describe.runIf(gate.ok)('HTTP server smoke test on an ephemeral port (real datab
     expect(profile.metadata).not.toBeNull();
     expect(profile.metadata!.name).toBeNull();
     expect(profile.metadata!.error).toContain('unsupported');
+  });
+
+  it('recovers previously failed metadata on a later plain GET without a manual refresh', async () => {
+    rpc.state.brokenTokenIds.add('999');
+    const first = await call('GET', '/api/profile?tokenId=999');
+    expect(first.status).toBe(200);
+    const p1 = first.json as {
+      ownership: { status: string };
+      metadata: { name: string | null; error: string | null } | null;
+    };
+    expect(p1.ownership.status).toBe('fresh');
+    expect(p1.metadata).not.toBeNull();
+    expect(p1.metadata!.error).toContain('unsupported');
+    const attempts = rpc.state.tokenUriCalls.get('999') ?? 0;
+    expect(attempts).toBe(1);
+
+    const second = await call('GET', '/api/profile?tokenId=999');
+    expect(second.status).toBe(200);
+    const p2 = second.json as {
+      ownership: { status: string };
+      metadata: { error: string | null } | null;
+    };
+    expect(p2.ownership.status).toBe('fresh');
+    expect(p2.metadata!.error).toContain('unsupported');
+    expect(rpc.state.tokenUriCalls.get('999')).toBe(attempts);
+
+    rpc.state.brokenTokenIds.delete('999');
+    await new Promise(resolve => setTimeout(resolve, 1600));
+    const third = await call('GET', '/api/profile?tokenId=999');
+    const p3 = third.json as {
+      metadata: { name: string | null; error: string | null; stale: boolean } | null;
+    };
+    expect(p3.metadata!.error).toBeNull();
+    expect(p3.metadata!.stale).toBe(false);
+    expect(p3.metadata!.name).toBe('CHOG #5');
+    expect(rpc.state.tokenUriCalls.get('999')).toBe(attempts + 1);
+  }, 10_000);
+
+  it('keeps the last successful metadata when a later refresh fails', async () => {
+    const open = await call('GET', '/api/profile?tokenId=777');
+    const before = (open.json as { metadata: { name: string | null } }).metadata;
+    expect(before!.name).toBe('CHOG #5');
+
+    rpc.state.brokenTokenIds.add('777');
+    try {
+      const refresh = await call('POST', '/api/profile/refresh', { tokenId: '777' }, { origin: ORIGIN });
+      expect(refresh.status).toBe(200);
+      const m = (refresh.json as {
+        metadata: { name: string | null; imageUri: string | null; error: string | null };
+        ownership: { status: string };
+      });
+      expect(m.metadata.name).toBe('CHOG #5');
+      expect(m.metadata.imageUri).toBe('ipfs://bafysmoke/5.png');
+      expect(m.metadata.error).toContain('unsupported');
+      expect(m.ownership.status).toBe('fresh');
+    } finally {
+      rpc.state.brokenTokenIds.delete('777');
+    }
   });
 });

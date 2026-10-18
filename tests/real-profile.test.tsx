@@ -210,4 +210,55 @@ describe('real profile page with a live API', () => {
     expect(screen.getByText('Current owner: 0x6016…2b88')).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh chain data' })).toBeEnabled());
   });
+
+  it('shows an honest metadata failure notice while ownership facts stay visible', async () => {
+    const profile = makeProfile();
+    profile.metadata = {
+      tokenUri: TOKEN_URI,
+      name: null,
+      imageUri: null,
+      traits: null,
+      retrievedAt: '2026-10-15T12:00:00.000Z',
+      stale: true,
+      error: 'Pinata timed out; ipfs.io returned HTTP 429',
+    };
+    fetchMock.mockImplementation(routeFetch({ profile: () => jsonResponse(profile) }));
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'The character journal.' })).toBeInTheDocument();
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent(/Metadata fetch failed/i);
+    expect(screen.getByRole('heading', { level: 2, name: 'Chog #1425' })).toBeInTheDocument();
+    expect(screen.getByText(/Current owner: 0x6016…2b88/)).toBeInTheDocument();
+    expect(screen.getByText(/Ownership fresh ·/)).toBeInTheDocument();
+  });
+
+  it('explains that the last successful copy is shown when the latest fetch fails', async () => {
+    const profile = makeProfile();
+    profile.metadata = { ...profile.metadata!, error: 'HTTP 429 from gateway', stale: false };
+    fetchMock.mockImplementation(routeFetch({ profile: () => jsonResponse(profile) }));
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'The character journal.' })).toBeInTheDocument();
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent(/showing the last successful copy/i);
+    expect(screen.getByRole('heading', { level: 2, name: 'CHOG #917' })).toBeInTheDocument();
+    expect(screen.getByText('Type: Ashen')).toBeInTheDocument();
+  });
+
+  it('reports metadata that has not loaded yet without dropping the page', async () => {
+    const profile = makeProfile();
+    profile.metadata = null;
+    fetchMock.mockImplementation(routeFetch({ profile: () => jsonResponse(profile) }));
+    render(<App />);
+
+    expect(await screen.findByRole('heading', { name: 'The character journal.' })).toBeInTheDocument();
+    const alerts = await screen.findAllByRole('alert');
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toHaveTextContent(/Metadata has not loaded yet/i);
+    expect(screen.getByRole('heading', { level: 2, name: 'Chog #1425' })).toBeInTheDocument();
+    expect(screen.getByText(/Ownership fresh ·/)).toBeInTheDocument();
+  });
 });

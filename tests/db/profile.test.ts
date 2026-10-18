@@ -44,6 +44,7 @@ function testConfig(): Config {
     appOrigin: 'http://localhost:5173',
     apiPort: 8787,
     metadataTtlMs: 60_000,
+    metadataRetryCooldownMs: 15_000,
     maxLogRange: 100,
     identityNamespace: 'chog-mainnet',
     sessionSecret: 'test-session-secret-at-least-16-chars',

@@ -258,6 +258,23 @@ function ReadyProfile({
           <div className={s.characterBody}>
             <p className={s.eyebrow}>Chog Genesis</p>
             <h2>{p.metadata?.name ?? `Chog #${tokenId}`}</h2>
+            {p.metadata?.error ? (
+              <p className={s.warn} role="alert">
+                Metadata fetch failed
+                {p.metadata.name || p.metadata.imageUri
+                  ? " — showing the last successful copy"
+                  : ""}
+                . It retries automatically when the profile opens; Refresh
+                chain data retries now.
+              </p>
+            ) : !p.metadata ? (
+              <p className={s.warn} role="alert">
+                Metadata has not loaded yet. It retries automatically when the
+                profile opens.
+              </p>
+            ) : p.metadata.stale ? (
+              <p className={s.warn}>Showing cached metadata.</p>
+            ) : null}
             <p className={s.title}>{g?.title ?? "The story is unwritten"}</p>
             <div className={s.ownerMini}>
               <p className={s.eyebrow}>On-chain facts</p>

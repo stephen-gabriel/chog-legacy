@@ -307,15 +307,17 @@ async function upsertMetadata(
   traits: ApiTraitRow[] | null,
   error: string | null,
   now: Date,
+  opts?: { preserveRetrievedAt?: Date | null },
 ): Promise<void> {
   const [ns, chainId, contract, tokenId] = keyParams(identity);
+  const retrievedAt = opts?.preserveRetrievedAt ?? now;
   await pool.query(
     `INSERT INTO metadata_cache (namespace, chain_id, contract, token_id, token_uri, name, image_uri, traits, error, retrieved_at)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
      ON CONFLICT (namespace, chain_id, contract, token_id)
      DO UPDATE SET token_uri = EXCLUDED.token_uri, name = EXCLUDED.name, image_uri = EXCLUDED.image_uri,
                    traits = EXCLUDED.traits, error = EXCLUDED.error, retrieved_at = EXCLUDED.retrieved_at`,
-    [ns, chainId, contract, tokenId, tokenUri, name, imageUri, traits ? JSON.stringify(traits) : null, error, now.toISOString()],
+    [ns, chainId, contract, tokenId, tokenUri, name, imageUri, traits ? JSON.stringify(traits) : null, error, retrievedAt.toISOString()],
   );
 }
 
@@ -357,6 +359,9 @@ async function syncHistoryPage(deps: ReadDeps, identity: Identity, latestBlock: 
 export interface RefreshOptions {
   metadataTimeoutMs?: number;
   metadataCycles?: number;
+  metadataRetryDelayMs?: number;
+  metadataGatewayDelayMs?: number;
+  metadataTotalBudgetMs?: number;
   syncHistory?: boolean;
 }
 
@@ -386,8 +391,11 @@ export async function refreshProfile(deps: ReadDeps, identity: Identity, opts?: 
   try {
     const tokenUri = await deps.chain.tokenURI(identity.tokenId);
     const meta = await resolveMetadata(tokenUri, {
-      timeoutMs: opts?.metadataTimeoutMs ?? 8000,
-      cycles: opts?.metadataCycles ?? 2,
+      timeoutMs: opts?.metadataTimeoutMs,
+      cycles: opts?.metadataCycles,
+      retryDelayMs: opts?.metadataRetryDelayMs,
+      gatewayDelayMs: opts?.metadataGatewayDelayMs,
+      totalBudgetMs: opts?.metadataTotalBudgetMs,
     });
     if (meta.ok) {
       await upsertMetadata(
@@ -404,6 +412,7 @@ export async function refreshProfile(deps: ReadDeps, identity: Identity, opts?: 
         prev?.traits ?? null,
         meta.error,
         now,
+        { preserveRetrievedAt: prev?.retrieved_at ?? new Date(now.getTime() - deps.config.metadataTtlMs - 1000) },
       );
     }
   } catch (e) {
@@ -416,12 +425,61 @@ export async function refreshProfile(deps: ReadDeps, identity: Identity, opts?: 
       prev?.traits ?? null,
       e instanceof Error ? e.message : String(e),
       now,
+      { preserveRetrievedAt: prev?.retrieved_at ?? new Date(now.getTime() - deps.config.metadataTtlMs - 1000) },
     );
   }
 
   if (opts?.syncHistory !== false) {
     await syncHistoryPage(deps, identity, health.blockNumber);
   }
+  return readProfile(deps, identity);
+}
+
+export function metadataNeedsRecovery(metadata: ApiMetadata | null): boolean {
+  return metadata === null || metadata.error !== null || metadata.stale;
+}
+
+interface MetadataRecoveryState {
+  inFlight: Promise<void> | null;
+  lastFailureAt: number | null;
+}
+
+const metadataRecoveryStates = new Map<string, MetadataRecoveryState>();
+
+export async function readProfileWithRecovery(
+  deps: ReadDeps,
+  identity: Identity,
+  opts?: RefreshOptions,
+): Promise<ApiProfile> {
+  const profile = await readProfile(deps, identity);
+  if (!metadataNeedsRecovery(profile.metadata)) return profile;
+
+  const idKey = identityKey(identity);
+  const key = `${idKey.namespace}|${idKey.chainId}|${idKey.contract}|${idKey.tokenId}`;
+  const state: MetadataRecoveryState = metadataRecoveryStates.get(key) ?? { inFlight: null, lastFailureAt: null };
+  metadataRecoveryStates.set(key, state);
+
+  if (state.inFlight) {
+    await state.inFlight;
+    return readProfile(deps, identity);
+  }
+
+  if (state.lastFailureAt !== null && deps.now().getTime() - state.lastFailureAt < deps.config.metadataRetryCooldownMs) {
+    return profile;
+  }
+
+  const task = (async () => {
+    try {
+      const refreshed = await refreshProfile(deps, identity, opts);
+      state.lastFailureAt = metadataNeedsRecovery(refreshed.metadata) ? deps.now().getTime() : null;
+    } catch {
+      state.lastFailureAt = deps.now().getTime();
+    } finally {
+      state.inFlight = null;
+    }
+  })();
+  state.inFlight = task;
+  await task;
   return readProfile(deps, identity);
 }
 
