@@ -80,6 +80,8 @@ export interface Handlers {
   onSignIn(): void;
   onCancelSignIn(): void;
   onDisconnect(): void;
+  onSwitchNetwork(): void;
+  onPickWallet(uuid: string): void;
   onLookup(tokenId: string): void;
   onStartPractice(): void;
   onRefreshOwner(): void;

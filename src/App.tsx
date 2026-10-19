@@ -81,6 +81,8 @@ function WalletDock() {
             h={h}
             address={auth.address ?? auth.session?.wallet ?? undefined}
             note={auth.notice}
+            wallets={auth.wallets}
+            pickerOpen={auth.pickerOpen}
           />
         </div>
       )}

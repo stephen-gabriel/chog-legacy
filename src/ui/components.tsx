@@ -344,7 +344,7 @@ const VIEW: Record<Viewer, string> = {
   owner: "Signed in, owns this Chog",
   "non-owner": "Signed in, does not own this Chog",
   expired: "Your session expired. Sign in again.",
-  unsupported: "Switch your wallet to the app’s network, then retry sign-in.",
+  unsupported: "Your wallet is on the wrong network. Switch to Monad to continue.",
   switched: "Your wallet account changed. Sign in again.",
 };
 export function SessionBar({
@@ -352,11 +352,15 @@ export function SessionBar({
   h,
   address,
   note,
+  wallets,
+  pickerOpen,
 }: {
   v: Viewer;
   h: Handlers;
   address?: string;
   note?: string | null;
+  wallets?: { uuid: string; name: string; icon: string }[];
+  pickerOpen?: boolean;
 }) {
   const wallet =
     Boolean(address) ||
@@ -368,8 +372,10 @@ export function SessionBar({
       "non-owner",
       "signed",
       "switched",
+      "unsupported",
     ].includes(v);
   const signed = ["signed", "owner", "non-owner"].includes(v);
+  const showPicker = v === "visitor" && pickerOpen === true && (wallets?.length ?? 0) > 0;
   return (
     <section className={s.session} aria-label="Wallet and session">
       <div className={s.sessionTop}>
@@ -380,21 +386,38 @@ export function SessionBar({
           <b>{address ? short(address) : "Your wallet"}</b>
           <p role="status">{VIEW[v]}</p>
         </div>
+        {showPicker && (
+          <ul className={s.chips} aria-label="Choose a wallet to connect">
+            {(wallets ?? []).map((w) => (
+              <li key={w.uuid}>
+                <button
+                  type="button"
+                  className={s.btn2}
+                  onClick={() => h.onPickWallet(w.uuid)}
+                >
+                  {w.icon ? (
+                    <img src={w.icon} alt="" width={18} height={18} aria-hidden />
+                  ) : null}
+                  {w.name}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <div className={s.row}>
-          {v === "visitor" && (
+          {v === "visitor" && !showPicker && (
             <button className={s.btn2} onClick={h.onConnect}>
               Connect wallet
             </button>
           )}
-          {[
-            "connected",
-            "cancelled",
-            "expired",
-            "switched",
-            "unsupported",
-          ].includes(v) && (
+          {["connected", "cancelled", "expired", "switched"].includes(v) && (
             <button className={s.btn} onClick={h.onSignIn}>
-              {v === "unsupported" ? "Retry sign-in" : "Sign in"}
+              Sign in
+            </button>
+          )}
+          {v === "unsupported" && (
+            <button className={s.btn} onClick={h.onSwitchNetwork}>
+              Switch to Monad
             </button>
           )}
           {v === "awaiting" && (

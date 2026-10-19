@@ -23,6 +23,8 @@ export function PracticePage() {
     onSignIn: noop,
     onCancelSignIn: noop,
     onDisconnect: noop,
+    onSwitchNetwork: noop,
+    onPickWallet: noop,
     onLookup: noop,
     onStartPractice: noop,
     onRefreshOwner: noop,

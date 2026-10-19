@@ -4,20 +4,33 @@ export interface WalletProvider {
   removeListener?(event: string, cb: (...args: unknown[]) => void): void;
 }
 
-const ALLOWED_METHODS = new Set(['eth_requestAccounts', 'personal_sign', 'eth_chainId']);
+const ALLOWED_METHODS = new Set([
+  'eth_requestAccounts',
+  'personal_sign',
+  'eth_chainId',
+  'wallet_switchEthereumChain',
+  'wallet_addEthereumChain',
+]);
+
+export const MONAD_MAINNET_CHAIN_ID = 143;
+
+export const MONAD_MAINNET_ADD_CHAIN_PARAMS = {
+  chainId: '0x8f',
+  chainName: 'Monad Mainnet',
+  rpcUrls: ['https://rpc.monad.xyz'],
+  blockExplorerUrls: ['https://monadvision.com'],
+  nativeCurrency: { name: 'Monad', symbol: 'MON', decimals: 18 },
+};
 
 export class WalletError extends Error {
   readonly method: string;
-  constructor(method: string, message: string) {
+  readonly code: number | undefined;
+  constructor(method: string, message: string, code?: number) {
     super(message);
     this.name = 'WalletError';
     this.method = method;
+    this.code = typeof code === 'number' ? code : undefined;
   }
-}
-
-export function getProvider(): WalletProvider | null {
-  const w = window as unknown as { ethereum?: WalletProvider };
-  return w.ethereum ?? null;
 }
 
 async function call(p: WalletProvider, method: string, params?: unknown[]): Promise<unknown> {
@@ -25,7 +38,11 @@ async function call(p: WalletProvider, method: string, params?: unknown[]): Prom
   try {
     return await p.request(params ? { method, params } : { method });
   } catch (e) {
-    throw new WalletError(method, e instanceof Error ? e.message : String(e));
+    const code =
+      typeof e === 'object' && e !== null && 'code' in e && typeof (e as { code: unknown }).code === 'number'
+        ? (e as { code: number }).code
+        : undefined;
+    throw new WalletError(method, e instanceof Error ? e.message : String(e), code);
   }
 }
 
@@ -37,6 +54,33 @@ export async function connectAccounts(p: WalletProvider): Promise<string[]> {
 export async function getWalletChainId(p: WalletProvider): Promise<string | null> {
   const chain = await call(p, 'eth_chainId');
   return typeof chain === 'string' ? chain : null;
+}
+
+export function chainIdToHex(chainId: number): string {
+  return `0x${chainId.toString(16)}`;
+}
+
+function isChainMissing(e: unknown): boolean {
+  const code = e instanceof WalletError ? e.code : undefined;
+  if (code === 4902 || code === 404) return true;
+  const msg = e instanceof Error ? e.message : String(e);
+  return /unrecognized chain id|unknown chain|chain .*not (been )?added|not added/i.test(msg);
+}
+
+export async function switchChain(
+  p: WalletProvider,
+  chainIdHex: string,
+  addChainParams?: object,
+): Promise<void> {
+  try {
+    await call(p, 'wallet_switchEthereumChain', [{ chainId: chainIdHex }]);
+  } catch (e) {
+    if (isChainMissing(e) && addChainParams) {
+      await call(p, 'wallet_addEthereumChain', [addChainParams]);
+      return;
+    }
+    throw e;
+  }
 }
 
 export function toHexMessage(message: string): string {

@@ -44,6 +44,8 @@ const IDLE_HANDLERS: Handlers = {
   onSignIn: noop,
   onCancelSignIn: noop,
   onDisconnect: noop,
+  onSwitchNetwork: noop,
+  onPickWallet: noop,
   onLookup: noop,
   onStartPractice: noop,
   onRefreshOwner: noop,
@@ -217,6 +219,8 @@ function SessionSection({
       h={h}
       address={auth.address ?? auth.session?.wallet ?? undefined}
       note={auth.notice}
+      wallets={auth.wallets}
+      pickerOpen={auth.pickerOpen}
     />
   );
 }

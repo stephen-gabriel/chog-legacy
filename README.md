@@ -98,12 +98,13 @@ Inheritance works the same in both: reputation, chronicle, remaining daily actio
 
 ## Verification status
 
-- `npm run typecheck` — clean. `npm test` — **148/148**. `npm run test:db` — **54/54**. `npm run build` — clean (client + server bundles).
+- `npm run typecheck` — clean. `npm test` — **160/160**. `npm run test:db` — **54/54**. `npm run build` — clean (client + server bundles).
 - Production bundle checked in a real browser: **27/27 checks** against live Monad mainnet — practice loop, SIWE sign-in with a domain matching the deployed host, non-owner read-only states, account switch, server-side logout, wrong-chain rejection, mobile (390×844) with 0 px overflow, keyboard path, API-down honesty.
 - Courier-debt story arc accepted end-to-end in a browser across three simulated UTC days: **29/29 checks** (journal → chapter → outcome → obligation → inheritance → recall → resolution → cleared).
 - Production container verified against a pre-existing database: migration `0002` applies non-destructively **before** the listener starts, and origin enforcement returns 200 for `APP_ORIGIN` / 403 `ORIGIN_DENIED` for anything else.
 - Saved practice data written before the story-consequences schema is normalized on load, so older sessions keep working (no blank practice page).
 - NFT metadata recovery verified in a real browser against live mainnet and public gateways: a profile opened normally (no manual refresh) recovered an **uncached** token in 8.8 s and a token with a **previously failed, stale cache row** (the production "Pinata timed out; … HTTP 429" signature) in 5.9 s, with portraits loaded and 0 console errors; an immediate reopen inside the cooldown made no new chain attempt (0.05 s).
+- Wallet connection flow verified end-to-end in a real browser (Edge runtime, **simulated EIP-6963 providers — not real extensions**) with **22/22 checks** and 0 console errors: Connect opens a picker for both installed wallets instead of auto-opening one, the chosen provider is honored across reconnects (disconnect → pick the other wallet), disconnect from a wrong-network error state clears the error/chain/buttons/notice honestly, `Switch to Monad` sends `wallet_switchEthereumChain {chainId: 0x8f}` (add-chain fallback with verified Monad mainnet params when the wallet reports 4902), and `personal_sign` is only ever requested after chain 143 is re-confirmed — stray `accountsChanged`/`chainChanged` events after disconnect cannot repopulate the UI. jsdom regression suite: `tests/wallet-flow.test.tsx` (12) + reworked `tests/signin-flow.test.tsx` (6).
 - **Real-holder verification is pending** — a consenting holder must sign in and save one real choice on their own NFT against the deployed URL; it is the one evidence class no automated test can produce.
 
 ## Deployment
