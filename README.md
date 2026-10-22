@@ -107,6 +107,10 @@ Inheritance works the same in both: reputation, chronicle, remaining daily actio
 - Wallet connection flow verified end-to-end in a real browser (Edge runtime, **simulated EIP-6963 providers — not real extensions**) with **22/22 checks** and 0 console errors: Connect opens a picker for both installed wallets instead of auto-opening one, the chosen provider is honored across reconnects (disconnect → pick the other wallet), disconnect from a wrong-network error state clears the error/chain/buttons/notice honestly, `Switch to Monad` sends `wallet_switchEthereumChain {chainId: 0x8f}` (add-chain fallback with verified Monad mainnet params when the wallet reports 4902), and `personal_sign` is only ever requested after chain 143 is re-confirmed — stray `accountsChanged`/`chainChanged` events after disconnect cannot repopulate the UI. jsdom regression suite: `tests/wallet-flow.test.tsx` (12) + reworked `tests/signin-flow.test.tsx` (6).
 - **Real-holder verification is pending** — a consenting holder must sign in and save one real choice on their own NFT against the deployed URL; it is the one evidence class no automated test can produce.
 
+### Verification limits
+
+Live Monad NFT ownership and metadata reads, wallet sign-in and logout, and automated gameplay persistence and ownership-transition tests have been verified. An end-to-end saved gameplay choice by an actual Chog NFT holder has not yet been verified because we could not arrange a holder walkthrough.
+
 ## Deployment
 
 See **[DEPLOYMENT.md](DEPLOYMENT.md)** — Render Free + Neon Free, zero-cost stack, with the environment checklist in `.env.production.example` (placeholders only; never commit `.env`). Migrations run on boot, so a deploy is: push → set `DATABASE_URL`, `SESSION_SECRET`, `APP_ORIGIN` → watch the log for `applied migrations` then `listening … (origin …)`.
