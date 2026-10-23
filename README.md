@@ -129,4 +129,9 @@ See **[DEPLOYMENT.md](DEPLOYMENT.md)** — Render Free + Neon Free, zero-cost st
 
 - `public/art/ashen-storybook.png` is an original AI-generated illustration used **only** for the fictional practice character on the entry page — it never substitutes for real NFT metadata.
 - The chain data is read-only against the public Monad RPC (`https://rpc.monad.xyz`, chain id `143`, contract `Chog Genesis`); no API keys are required or bundled.
-- This repository currently ships without a `LICENSE` file.
+
+## License
+
+This project's original source code is released under the [MIT License](LICENSE) — Copyright (c) 2026 Stephen Gabriel.
+
+MIT applies only to that original project code. Third-party assets, Chog NFT artwork, names, and branding remain subject to their respective owners' rights and applicable licenses. See [Repository notes](#repository-notes) for artwork attribution.
